@@ -7,7 +7,7 @@ namespace StatusShift;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
     public bool Enabled { get; set; } = true;
     public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
@@ -24,16 +24,30 @@ public class Configuration : IPluginConfiguration
         {
             Name = "In duty",
             Priority = 100,
-            InDuty = true,
             SearchComment = "In content — whispers after.",
             OnlineStatus = OnlineStatusAction.Busy,
+            Activities = [ActivityFlag.InDuty],
+        },
+        new()
+        {
+            Name = "Venue hours",
+            Priority = 50,
+            SearchComment = "Venue hours. Walk-ups welcome.",
+            OnlineStatus = OnlineStatusAction.Roleplaying,
+            Schedule = new RuleSchedule
+            {
+                Mode = ScheduleMode.Weekly,
+                AllDay = false,
+                StartHour = 20,
+                EndHour = 23,
+                Days = [DayOfWeek.Friday, DayOfWeek.Saturday],
+            },
         },
         new()
         {
             Name = "Default",
             Priority = 0,
             SearchComment = "Whispers welcome.",
-            OnlineStatus = OnlineStatusAction.LeaveAlone,
         },
     ];
 }
