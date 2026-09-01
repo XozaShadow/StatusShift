@@ -132,7 +132,7 @@ internal sealed class RuleEngine(Configuration config)
     }
 }
 
-internal sealed record GameSnapshot(
+public sealed record GameSnapshot(
     ushort TerritoryId,
     string TerritoryName,
     uint JobId,
