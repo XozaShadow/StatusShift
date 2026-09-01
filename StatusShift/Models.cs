@@ -124,6 +124,7 @@ public class StatusRule
     public List<uint> TerritoryIds { get; set; } = [];
     public List<string> TerritoryNameContains { get; set; } = [];
     public List<uint> JobIds { get; set; } = [];
+    public List<string> JobAbbrs { get; set; } = [];
     public List<uint> WorldIds { get; set; } = [];
     public List<DayOfWeek> Days { get; set; } = [];
     public bool? InDuty { get; set; }
