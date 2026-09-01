@@ -238,9 +238,8 @@ public sealed record GameSnapshot(
         if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
         if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
         if (Plugin.ClientState.IsPvP) flags.Add(ActivityFlag.PvP);
-
-        TryFlag(ConditionFlag.Diving, ActivityFlag.Diving, flags);
-        TryFlag(ConditionFlag.UsingPartyFinder, ActivityFlag.WaitingForDutyFinder, flags);
+        if (Plugin.Condition[ConditionFlag.Swimming] && Plugin.Condition[ConditionFlag.Mounted])
+            flags.Add(ActivityFlag.Diving);
 
         var place = RuleEngine.ResolvePlace(Plugin.ClientState.TerritoryType);
         if (place.Housing) flags.Add(ActivityFlag.InResidence);
@@ -263,17 +262,5 @@ public sealed record GameSnapshot(
             place.Housing,
             DateTime.Now,
             flags);
-    }
-
-    private static void TryFlag(ConditionFlag flag, ActivityFlag mapped, HashSet<ActivityFlag> flags)
-    {
-        try
-        {
-            if (Plugin.Condition[flag]) flags.Add(mapped);
-        }
-        catch
-        {
-            // Flag names can shift between Dalamud builds.
-        }
     }
 }
