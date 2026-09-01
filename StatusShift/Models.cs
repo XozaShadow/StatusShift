@@ -19,6 +19,43 @@ public enum ApplyMode
     Auto = 1,
 }
 
+public enum ScheduleMode
+{
+    Always = 0,
+    Daily = 1,
+    Weekly = 2,
+    OneTime = 3,
+    Custom = 4,
+}
+
+public enum ActivityFlag
+{
+    InDuty = 0,
+    InCombat = 1,
+    Crafting = 2,
+    Gathering = 3,
+    Mounted = 4,
+    Flying = 5,
+    Swimming = 6,
+    WatchingCutscene = 7,
+    Dead = 8,
+    WeaponDrawn = 9,
+}
+
+[Serializable]
+public class RuleSchedule
+{
+    public ScheduleMode Mode { get; set; } = ScheduleMode.Always;
+    public bool AllDay { get; set; } = true;
+    public int StartHour { get; set; } = 9;
+    public int StartMinute { get; set; }
+    public int EndHour { get; set; } = 12;
+    public int EndMinute { get; set; }
+    public List<DayOfWeek> Days { get; set; } = [];
+    public string? DateStart { get; set; }
+    public string? DateEnd { get; set; }
+}
+
 [Serializable]
 public class StatusRule
 {
@@ -30,11 +67,14 @@ public class StatusRule
     public string SearchComment { get; set; } = string.Empty;
     public OnlineStatusAction OnlineStatus { get; set; } = OnlineStatusAction.LeaveAlone;
 
+    public RuleSchedule Schedule { get; set; } = new();
+    public List<ActivityFlag> Activities { get; set; } = [];
     public List<ushort> TerritoryIds { get; set; } = [];
     public List<string> TerritoryNameContains { get; set; } = [];
     public List<uint> JobIds { get; set; } = [];
-    public List<DayOfWeek> Days { get; set; } = [];
 
+    // Legacy fields from the first skeleton. Still honored if Schedule is Always and these are set.
+    public List<DayOfWeek> Days { get; set; } = [];
     public bool? InDuty { get; set; }
     public string? TimeStart { get; set; }
     public string? TimeEnd { get; set; }
