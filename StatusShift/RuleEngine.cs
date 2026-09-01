@@ -16,10 +16,7 @@ internal sealed class RuleEngine(Configuration config)
         var territoryId = Plugin.ClientState.TerritoryType;
         var territoryName = ResolveTerritoryName(territoryId);
         var jobId = Plugin.ClientState.LocalPlayer.ClassJob.RowId;
-        var inDuty = Plugin.Condition[ConditionFlag.BoundByDuty]
-                     || Plugin.Condition[ConditionFlag.BoundByDuty56]
-                     || Plugin.Condition[ConditionFlag.BoundByDuty95]
-                     || Plugin.Condition[ConditionFlag.InCombat];
+        var inDuty = Plugin.Condition[ConditionFlag.BoundByDuty];
         var now = DateTime.Now;
 
         return config.Rules
