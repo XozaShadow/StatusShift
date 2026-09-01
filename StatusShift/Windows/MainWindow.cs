@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -18,14 +18,24 @@ public class MainWindow : Window, IDisposable
     ];
 
     private static readonly string[] DayLetters = ["M", "T", "W", "T", "F", "S", "S"];
+    private static readonly string[] LocationKinds = ["Any", "Territory ID", "Zone name", "Region", "Zone group", "World", "Residence"];
+    private static readonly string[] MatchOps = ["-", "Yes", "No"];
+
+    private static readonly ActivityFlag[] StateChoices =
+    [
+        ActivityFlag.InCombat, ActivityFlag.Dead, ActivityFlag.Crafting, ActivityFlag.Gathering,
+        ActivityFlag.Mounted, ActivityFlag.Flying, ActivityFlag.Swimming, ActivityFlag.Diving,
+        ActivityFlag.WatchingCutscene, ActivityFlag.InDuty, ActivityFlag.WaitingForDutyFinder,
+        ActivityFlag.InParty, ActivityFlag.PartyLeader, ActivityFlag.PvP, ActivityFlag.InResidence,
+    ];
 
     public MainWindow(Plugin plugin) : base("StatusShift###StatusShiftMain")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(480, 420),
-            MaximumSize = new Vector2(980, 1100),
+            MinimumSize = new Vector2(560, 460),
+            MaximumSize = new Vector2(980, 1200),
         };
     }
 
@@ -47,7 +57,7 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
 
         var snap = plugin.Snapshot();
-        ImGui.TextDisabled($"Now: {snap.TerritoryId} {snap.TerritoryName} | {snap.JobAbbr} | {snap.WorldName}");
+        ImGui.TextDisabled($"{snap.TerritoryName}  ·  {snap.RegionName}  ·  {snap.JobAbbr}  ·  {snap.WorldName}");
 
         var match = plugin.CurrentRule();
         ImGui.Separator();
@@ -60,115 +70,184 @@ public class MainWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.Button("Add rule"))
         {
-            cfg.Rules.Add(new StatusRule { Name = string.IsNullOrWhiteSpace(newRuleName) ? "New rule" : newRuleName });
+            var nextPrio = cfg.Rules.Count == 0 ? 10 : cfg.Rules.Max(r => r.Priority) + 10;
+            cfg.Rules.Add(new StatusRule
+            {
+                Name = string.IsNullOrWhiteSpace(newRuleName) ? "New rule" : newRuleName,
+                Priority = nextPrio,
+            });
             cfg.Save();
         }
 
-        var removeAt = -1;
-        for (var i = 0; i < cfg.Rules.Count; i++)
+        StatusRule? remove = null;
+        foreach (var rule in cfg.Rules.OrderByDescending(r => r.Priority).ToList())
         {
-            var rule = cfg.Rules[i];
             ImGui.PushID(rule.Id);
-            if (ImGui.CollapsingHeader($"{rule.Name}  (P{rule.Priority})###hdr{rule.Id}"))
-                DrawRule(cfg, rule, ref removeAt, i);
+            if (ImGui.CollapsingHeader($"P{rule.Priority}  {rule.Name}###hdr{rule.Id}"))
+                DrawRule(cfg, rule, ref remove);
             ImGui.PopID();
         }
 
-        if (removeAt >= 0)
+        if (remove is not null)
         {
-            cfg.Rules.RemoveAt(removeAt);
+            cfg.Rules.Remove(remove);
             cfg.Save();
         }
     }
 
-    private void DrawRule(Configuration cfg, StatusRule rule, ref int removeAt, int index)
+    private void DrawRule(Configuration cfg, StatusRule rule, ref StatusRule? remove)
     {
-        var on = rule.Enabled;
-        if (ImGui.Checkbox("On", ref on)) { rule.Enabled = on; cfg.Save(); }
+        if (ImGui.BeginTable("hdr", 3, ImGuiTableFlags.SizingStretchProp))
+        {
+            ImGui.TableNextColumn();
+            var on = rule.Enabled;
+            if (ImGui.Checkbox("On", ref on)) { rule.Enabled = on; cfg.Save(); }
 
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(180);
-        var name = rule.Name;
-        if (ImGui.InputText("Name", ref name, 64)) { rule.Name = name; cfg.Save(); }
+            ImGui.TableNextColumn();
+            ImGui.SetNextItemWidth(-1);
+            var name = rule.Name;
+            if (ImGui.InputText("##name", ref name, 64)) { rule.Name = name; cfg.Save(); }
 
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(80);
-        var prio = rule.Priority;
-        if (ImGui.InputInt("Prio", ref prio)) { rule.Priority = prio; cfg.Save(); }
+            ImGui.TableNextColumn();
+            ImGui.SetNextItemWidth(90);
+            var prio = rule.Priority;
+            if (ImGui.InputInt("Prio", ref prio)) { rule.Priority = prio; cfg.Save(); }
+            ImGui.EndTable();
+        }
 
         var comment = rule.SearchComment;
-        if (ImGui.InputText("Comment", ref comment, 192)) { rule.SearchComment = comment; cfg.Save(); }
+        if (ImGui.InputText("Search comment", ref comment, 192)) { rule.SearchComment = comment; cfg.Save(); }
+        ImGui.TextDisabled("Tokens: {zone} {region} {job} {world} {home} {time}");
 
         var status = (int)rule.OnlineStatus;
-        var labels = new[] { "Leave alone", "Online", "Role-playing", "Busy", "Away", "Looking for Party" };
-        if (ImGui.Combo("Status", ref status, labels, labels.Length))
+        if (ImGui.Combo("Status", ref status, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
         {
             rule.OnlineStatus = (OnlineStatusAction)status;
             cfg.Save();
         }
 
-        ImGui.Separator();
-        ImGui.TextUnformatted("Schedule");
-        DrawSchedule(cfg, rule);
-
-        ImGui.Separator();
-        ImGui.TextUnformatted("Activity (all selected must match; none = any)");
-        DrawActivities(cfg, rule);
-
-        ImGui.Separator();
-        var terr = string.Join(",", rule.TerritoryIds);
-        if (ImGui.InputText("Territory IDs", ref terr, 128))
+        var revert = rule.RevertWhenFalse;
+        if (ImGui.Checkbox("Only while true; otherwise revert to", ref revert))
         {
-            rule.TerritoryIds = ParseUints(terr);
+            rule.RevertWhenFalse = revert;
             cfg.Save();
         }
-        ImGui.SameLine();
-        if (ImGui.Button("+ zone"))
+        if (rule.RevertWhenFalse)
         {
-            var id = plugin.Snapshot().TerritoryId;
-            if (!rule.TerritoryIds.Contains(id)) rule.TerritoryIds.Add(id);
-            cfg.Save();
-        }
-
-        var names = string.Join(",", rule.TerritoryNameContains);
-        if (ImGui.InputText("Zone name contains", ref names, 200))
-        {
-            rule.TerritoryNameContains =
-            [
-                .. names.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            ];
-            cfg.Save();
+            ImGui.SameLine();
+            var fb = (int)rule.FallbackStatus;
+            ImGui.SetNextItemWidth(180);
+            if (ImGui.Combo("##fallback", ref fb, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
+            {
+                rule.FallbackStatus = (OnlineStatusAction)fb;
+                cfg.Save();
+            }
+            var fbc = rule.FallbackComment;
+            if (ImGui.InputText("Fallback comment", ref fbc, 192))
+            {
+                rule.FallbackComment = fbc;
+                cfg.Save();
+            }
         }
 
-        var jobs = string.Join(",", rule.JobIds);
-        if (ImGui.InputText("Job IDs", ref jobs, 128))
+        if (ImGui.TreeNode("Schedule — skipped if outside this window"))
         {
-            rule.JobIds = ParseUints(jobs);
-            cfg.Save();
-        }
-        ImGui.SameLine();
-        if (ImGui.Button("+ job"))
-        {
-            var id = plugin.Snapshot().JobId;
-            if (id != 0 && !rule.JobIds.Contains(id)) rule.JobIds.Add(id);
-            cfg.Save();
+            DrawSchedule(cfg, rule);
+            ImGui.TreePop();
         }
 
-        var worlds = string.Join(",", rule.WorldIds);
-        if (ImGui.InputText("World IDs", ref worlds, 128))
+        if (ImGui.TreeNode("Location — one place at a time"))
         {
-            rule.WorldIds = ParseUints(worlds);
-            cfg.Save();
+            DrawLocation(cfg, rule);
+            ImGui.TreePop();
         }
-        ImGui.SameLine();
-        if (ImGui.Button("+ world"))
+
+        if (ImGui.TreeNode("State — Yes / No / ignore"))
         {
-            var id = plugin.Snapshot().WorldId;
-            if (id != 0 && !rule.WorldIds.Contains(id)) rule.WorldIds.Add(id);
+            DrawStates(cfg, rule);
+            ImGui.TreePop();
+        }
+
+        if (ImGui.Button("Delete rule")) remove = rule;
+    }
+
+    private void DrawLocation(Configuration cfg, StatusRule rule)
+    {
+        var loc = rule.Location ??= new LocationFilter();
+        var kind = (int)loc.Kind;
+        if (ImGui.Combo("Match", ref kind, LocationKinds, LocationKinds.Length))
+        {
+            loc.Kind = (LocationKind)kind;
             cfg.Save();
         }
 
-        if (ImGui.Button("Delete")) removeAt = index;
+        var snap = plugin.Snapshot();
+        switch (loc.Kind)
+        {
+            case LocationKind.Any:
+                ImGui.TextDisabled("Any zone. Location is skipped.");
+                break;
+            case LocationKind.TerritoryId:
+                var value = loc.Value;
+                if (ImGui.InputText("Territory ID", ref value, 16)) { loc.Value = value; cfg.Save(); }
+                ImGui.SameLine();
+                if (ImGui.Button("Use current")) { loc.Value = snap.TerritoryId.ToString(); cfg.Save(); }
+                ImGui.TextDisabled($"Current: {snap.TerritoryId} {snap.TerritoryName}");
+                break;
+            case LocationKind.ZoneName:
+                value = loc.Value;
+                if (ImGui.InputText("Name contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
+                ImGui.SameLine();
+                if (ImGui.Button("Use current")) { loc.Value = snap.TerritoryName; cfg.Save(); }
+                break;
+            case LocationKind.Region:
+                value = loc.Value;
+                if (ImGui.InputText("Region contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
+                ImGui.SameLine();
+                if (ImGui.Button("Use current")) { loc.Value = snap.RegionName; cfg.Save(); }
+                ImGui.TextDisabled($"Current region: {snap.RegionName}");
+                break;
+            case LocationKind.ZoneGroup:
+                value = loc.Value;
+                if (ImGui.InputText("Zone group contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
+                ImGui.SameLine();
+                if (ImGui.Button("Use current")) { loc.Value = snap.ZoneGroupName; cfg.Save(); }
+                ImGui.TextDisabled($"Current group: {snap.ZoneGroupName}");
+                break;
+            case LocationKind.World:
+                value = loc.Value;
+                if (ImGui.InputText("World name or ID", ref value, 32)) { loc.Value = value; cfg.Save(); }
+                ImGui.SameLine();
+                if (ImGui.Button("Use current")) { loc.Value = snap.WorldName; cfg.Save(); }
+                break;
+            case LocationKind.Residence:
+                ImGui.TextWrapped("Matches housing wards, apartments, private chambers, cottages, houses, mansions.");
+                value = loc.Value;
+                if (ImGui.InputText("Optional name filter", ref value, 64)) { loc.Value = value; cfg.Save(); }
+                break;
+        }
+    }
+
+    private static void DrawStates(Configuration cfg, StatusRule rule)
+    {
+        ImGui.TextDisabled("Ignore (-) skips the check. Yes requires it. No forbids it.");
+        foreach (var flag in StateChoices)
+        {
+            var existing = rule.States.Find(s => s.Flag == flag);
+            var op = existing?.Op ?? MatchOp.Any;
+            var idx = (int)op;
+            ImGui.SetNextItemWidth(70);
+            if (ImGui.Combo(flag.ToString(), ref idx, MatchOps, MatchOps.Length))
+            {
+                if (idx == 0)
+                    rule.States.RemoveAll(s => s.Flag == flag);
+                else if (existing is null)
+                    rule.States.Add(new StateFilter { Flag = flag, Op = (MatchOp)idx });
+                else
+                    existing.Op = (MatchOp)idx;
+                cfg.Save();
+            }
+        }
     }
 
     private static void DrawSchedule(Configuration cfg, StatusRule rule)
@@ -187,7 +266,7 @@ public class MainWindow : Window, IDisposable
             var start = sched.DateStart ?? string.Empty;
             var end = sched.DateEnd ?? string.Empty;
             ImGui.SetNextItemWidth(120);
-            if (ImGui.InputText("Date start yyyy-MM-dd", ref start, 12))
+            if (ImGui.InputText("Date start", ref start, 12))
             {
                 sched.DateStart = string.IsNullOrWhiteSpace(start) ? null : start;
                 cfg.Save();
@@ -203,7 +282,7 @@ public class MainWindow : Window, IDisposable
 
         if (sched.Mode is ScheduleMode.Weekly or ScheduleMode.Custom)
         {
-            ImGui.TextUnformatted("Repeat on");
+            ImGui.TextUnformatted("Days");
             for (var d = 0; d < Week.Length; d++)
             {
                 if (d > 0) ImGui.SameLine();
@@ -245,32 +324,5 @@ public class MainWindow : Window, IDisposable
                 if (ImGui.InputInt("m##em", ref em)) { sched.EndMinute = Math.Clamp(em, 0, 59); cfg.Save(); }
             }
         }
-    }
-
-    private static void DrawActivities(Configuration cfg, StatusRule rule)
-    {
-        foreach (ActivityFlag flag in Enum.GetValues<ActivityFlag>())
-        {
-            var on = rule.Activities.Contains(flag);
-            if (ImGui.Checkbox(flag.ToString(), ref on))
-            {
-                if (on && !rule.Activities.Contains(flag)) rule.Activities.Add(flag);
-                if (!on) rule.Activities.Remove(flag);
-                cfg.Save();
-            }
-            ImGui.SameLine();
-        }
-        ImGui.NewLine();
-    }
-
-    private static List<uint> ParseUints(string raw)
-    {
-        var list = new List<uint>();
-        foreach (var part in raw.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (uint.TryParse(part, out var id))
-                list.Add(id);
-        }
-        return list;
     }
 }

@@ -38,6 +38,7 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime lastApply = DateTime.MinValue;
     private string lastAppliedComment = string.Empty;
     private OnlineStatusAction lastAppliedStatus = OnlineStatusAction.LeaveAlone;
+    private string? lastMatchedRuleId;
     private bool paused;
 
     public Plugin()
@@ -128,28 +129,33 @@ public sealed class Plugin : IDalamudPlugin
             return false;
         }
 
-        var comment = engine.ResolveComment(rule);
-        if (!force && comment == lastAppliedComment && rule.OnlineStatus == lastAppliedStatus)
+        return ApplyValues(rule.Name, engine.ResolveComment(rule), rule.OnlineStatus, force, rule.Id);
+    }
+
+    private bool ApplyValues(string name, string comment, OnlineStatusAction status, bool force, string? ruleId)
+    {
+        if (!force && comment == lastAppliedComment && status == lastAppliedStatus)
             return false;
 
         var ok = true;
         if (!string.IsNullOrWhiteSpace(comment))
             ok &= ChatSender.TrySendCommand($"/searchcomment {comment}");
 
-        var statusCmd = ChatSender.ToStatusCommand(rule.OnlineStatus);
+        var statusCmd = ChatSender.ToStatusCommand(status);
         if (statusCmd is not null)
             ok &= ChatSender.TrySendCommand(statusCmd);
 
         if (ok)
         {
             lastAppliedComment = comment;
-            lastAppliedStatus = rule.OnlineStatus;
+            lastAppliedStatus = status;
+            lastMatchedRuleId = ruleId;
             lastApply = DateTime.Now;
-            Notify($"Applied [{rule.Name}]: {comment}");
+            Notify($"Applied [{name}]: {comment}");
         }
         else
         {
-            Notify($"Failed to apply [{rule.Name}].");
+            Notify($"Failed to apply [{name}].");
         }
 
         return ok;
@@ -178,7 +184,7 @@ public sealed class Plugin : IDalamudPlugin
             case "zone":
             {
                 var snap = Snapshot();
-                Notify($"Zone {snap.TerritoryId} {snap.TerritoryName} | job {snap.JobId} {snap.JobAbbr} | world {snap.WorldId} {snap.WorldName}");
+                Notify($"{snap.TerritoryId} {snap.TerritoryName} / {snap.RegionName} | {snap.JobAbbr} | {snap.WorldName}");
                 break;
             }
             case "now":
@@ -220,7 +226,10 @@ public sealed class Plugin : IDalamudPlugin
     {
         var rule = engine.FindMatch();
         if (rule is null)
+        {
+            TryRevert();
             return;
+        }
 
         var comment = engine.ResolveComment(rule);
         var changed = comment != lastAppliedComment || rule.OnlineStatus != lastAppliedStatus;
@@ -230,6 +239,7 @@ public sealed class Plugin : IDalamudPlugin
         if (Configuration.ApplyMode == ApplyMode.Confirm)
         {
             Notify($"Match [{rule.Name}]: {comment}  — /ss apply");
+            lastMatchedRuleId = rule.Id;
             return;
         }
 
@@ -237,6 +247,28 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         TryApply(rule);
+    }
+
+    private void TryRevert()
+    {
+        if (lastMatchedRuleId is null)
+            return;
+
+        var previous = Configuration.Rules.Find(r => r.Id == lastMatchedRuleId);
+        lastMatchedRuleId = null;
+        if (previous is null || !previous.RevertWhenFalse)
+            return;
+
+        if ((DateTime.Now - lastApply).TotalSeconds < Math.Max(10, Configuration.CooldownSeconds)
+            && Configuration.ApplyMode == ApplyMode.Auto)
+            return;
+
+        ApplyValues(
+            previous.Name + " fallback",
+            previous.FallbackComment,
+            previous.FallbackStatus,
+            force: true,
+            ruleId: null);
     }
 
     private void Notify(string message)
