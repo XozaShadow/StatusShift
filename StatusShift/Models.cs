@@ -70,7 +70,7 @@ public class StatusRule
 
     public RuleSchedule Schedule { get; set; } = new();
     public List<ActivityFlag> Activities { get; set; } = [];
-    public List<ushort> TerritoryIds { get; set; } = [];
+    public List<uint> TerritoryIds { get; set; } = [];
     public List<string> TerritoryNameContains { get; set; } = [];
     public List<uint> JobIds { get; set; } = [];
     public List<uint> WorldIds { get; set; } = [];
