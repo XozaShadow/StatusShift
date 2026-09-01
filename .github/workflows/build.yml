@@ -14,9 +14,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -29,14 +29,14 @@ jobs:
           Expand-Archive -Force dalamud.zip $dest
 
       - name: Build
-        run: dotnet build StatusShift.slnx --configuration Release
+        run: dotnet build StatusShift.slnx --configuration Release -p:RestoreLockedMode=false
 
       - name: Stage package
         shell: pwsh
         run: |
           $out = "artifacts/StatusShift"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $src = Get-ChildItem -Recurse -Directory | Where-Object { $_.Name -eq "StatusShift" -and $_.FullName -match "bin" } | Select-Object -First 1
+          $src = Get-ChildItem -Recurse -Directory | Where-Object { $_.Name -eq "StatusShift" -and $_.FullName -match "bin\\x64\\Release" } | Select-Object -First 1
           if (-not $src) { $src = Get-Item "StatusShift\bin\x64\Release\StatusShift" -ErrorAction SilentlyContinue }
           if (-not $src) { $src = Get-Item "StatusShift\bin\Release" -ErrorAction SilentlyContinue }
           if (-not $src) { throw "Could not find build output" }
