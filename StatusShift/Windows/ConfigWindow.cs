@@ -11,7 +11,7 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
-    public ConfigWindow(Plugin plugin) : base("StatusShift Settings###StatusShiftConfig")
+    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.0 Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
         Size = new Vector2(520, 420);
@@ -54,8 +54,7 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Separator();
         ImGui.TextUnformatted("Install");
-        ImGui.TextWrapped("Dev plugin: add StatusShift.dll from bin/x64/Debug or a CI artifact.");
-        ImGui.TextWrapped("Custom repo (repo must be public): https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json");
+        ImGui.TextWrapped("Dev plugin: add StatusShift.dll from a CI artifact.");
 
         ImGui.Separator();
         if (ImGui.Button("Copy rules JSON"))

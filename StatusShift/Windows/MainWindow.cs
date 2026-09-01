@@ -29,13 +29,13 @@ public class MainWindow : Window, IDisposable
         ActivityFlag.InParty, ActivityFlag.PartyLeader, ActivityFlag.PvP, ActivityFlag.InResidence,
     ];
 
-    public MainWindow(Plugin plugin) : base("StatusShift###StatusShiftMain")
+    public MainWindow(Plugin plugin) : base("Status Shift v0.1.0###StatusShiftMain")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(560, 460),
-            MaximumSize = new Vector2(980, 1200),
+            MinimumSize = new Vector2(520, 420),
+            MaximumSize = new Vector2(720, 900),
         };
     }
 
@@ -57,7 +57,7 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
 
         var snap = plugin.Snapshot();
-        ImGui.TextDisabled($"{snap.TerritoryName}  ·  {snap.RegionName}  ·  {snap.JobAbbr}  ·  {snap.WorldName}");
+        ImGui.TextDisabled($"{snap.TerritoryName}  ·  {snap.JobAbbr} ({snap.JobId})  ·  {snap.WorldName}");
 
         var match = plugin.CurrentRule();
         ImGui.Separator();
@@ -109,7 +109,7 @@ public class MainWindow : Window, IDisposable
             if (ImGui.InputText("##name", ref name, 64)) { rule.Name = name; cfg.Save(); }
 
             ImGui.TableNextColumn();
-            ImGui.SetNextItemWidth(90);
+            ImGui.SetNextItemWidth(80);
             var prio = rule.Priority;
             if (ImGui.InputInt("Prio", ref prio)) { rule.Priority = prio; cfg.Save(); }
             ImGui.EndTable();
@@ -134,9 +134,8 @@ public class MainWindow : Window, IDisposable
         }
         if (rule.RevertWhenFalse)
         {
-            ImGui.SameLine();
             var fb = (int)rule.FallbackStatus;
-            ImGui.SetNextItemWidth(180);
+            ImGui.SetNextItemWidth(-1);
             if (ImGui.Combo("##fallback", ref fb, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
             {
                 rule.FallbackStatus = (OnlineStatusAction)fb;
@@ -150,25 +149,66 @@ public class MainWindow : Window, IDisposable
             }
         }
 
-        if (ImGui.TreeNode("Schedule — skipped if outside this window"))
+        if (ImGui.TreeNode("Schedule"))
         {
             DrawSchedule(cfg, rule);
             ImGui.TreePop();
         }
 
-        if (ImGui.TreeNode("Location — one place at a time"))
+        if (ImGui.TreeNode("Location"))
         {
             DrawLocation(cfg, rule);
             ImGui.TreePop();
         }
 
-        if (ImGui.TreeNode("State — Yes / No / ignore"))
+        if (ImGui.TreeNode("Job"))
+        {
+            DrawJob(cfg, rule);
+            ImGui.TreePop();
+        }
+
+        if (ImGui.TreeNode("State"))
         {
             DrawStates(cfg, rule);
             ImGui.TreePop();
         }
 
         if (ImGui.Button("Delete rule")) remove = rule;
+    }
+
+    private void DrawJob(Configuration cfg, StatusRule rule)
+    {
+        var snap = plugin.Snapshot();
+        ImGui.TextDisabled($"Current: {snap.JobAbbr}  ID {snap.JobId}");
+
+        var ids = string.Join(",", rule.JobIds);
+        if (ImGui.InputText("Job IDs", ref ids, 64))
+        {
+            rule.JobIds = ids.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => uint.TryParse(s, out var n) ? n : 0)
+                .Where(n => n != 0)
+                .ToList();
+            cfg.Save();
+        }
+
+        var abbrs = string.Join(",", rule.JobAbbrs);
+        if (ImGui.InputText("Job abbr (WHM, SGE)", ref abbrs, 64))
+        {
+            rule.JobAbbrs = abbrs.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.ToUpperInvariant())
+                .ToList();
+            cfg.Save();
+        }
+
+        if (ImGui.Button("Add current job"))
+        {
+            if (snap.JobId != 0 && !rule.JobIds.Contains(snap.JobId))
+                rule.JobIds.Add(snap.JobId);
+            if (!string.IsNullOrEmpty(snap.JobAbbr) && !rule.JobAbbrs.Contains(snap.JobAbbr, StringComparer.OrdinalIgnoreCase))
+                rule.JobAbbrs.Add(snap.JobAbbr);
+            cfg.Save();
+        }
+        ImGui.TextDisabled("Empty = any job. ID or abbr may match.");
     }
 
     private void DrawLocation(Configuration cfg, StatusRule rule)
@@ -185,43 +225,37 @@ public class MainWindow : Window, IDisposable
         switch (loc.Kind)
         {
             case LocationKind.Any:
-                ImGui.TextDisabled("Any zone. Location is skipped.");
+                ImGui.TextDisabled("Any zone.");
                 break;
             case LocationKind.TerritoryId:
                 var value = loc.Value;
                 if (ImGui.InputText("Territory ID", ref value, 16)) { loc.Value = value; cfg.Save(); }
-                ImGui.SameLine();
                 if (ImGui.Button("Use current")) { loc.Value = snap.TerritoryId.ToString(); cfg.Save(); }
-                ImGui.TextDisabled($"Current: {snap.TerritoryId} {snap.TerritoryName}");
+                ImGui.TextDisabled($"{snap.TerritoryId} {snap.TerritoryName}");
                 break;
             case LocationKind.ZoneName:
                 value = loc.Value;
                 if (ImGui.InputText("Name contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
-                ImGui.SameLine();
                 if (ImGui.Button("Use current")) { loc.Value = snap.TerritoryName; cfg.Save(); }
                 break;
             case LocationKind.Region:
                 value = loc.Value;
                 if (ImGui.InputText("Region contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
-                ImGui.SameLine();
                 if (ImGui.Button("Use current")) { loc.Value = snap.RegionName; cfg.Save(); }
-                ImGui.TextDisabled($"Current region: {snap.RegionName}");
+                ImGui.TextDisabled(snap.RegionName);
                 break;
             case LocationKind.ZoneGroup:
                 value = loc.Value;
-                if (ImGui.InputText("Zone group contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
-                ImGui.SameLine();
+                if (ImGui.InputText("Zone group", ref value, 64)) { loc.Value = value; cfg.Save(); }
                 if (ImGui.Button("Use current")) { loc.Value = snap.ZoneGroupName; cfg.Save(); }
-                ImGui.TextDisabled($"Current group: {snap.ZoneGroupName}");
                 break;
             case LocationKind.World:
                 value = loc.Value;
                 if (ImGui.InputText("World name or ID", ref value, 32)) { loc.Value = value; cfg.Save(); }
-                ImGui.SameLine();
                 if (ImGui.Button("Use current")) { loc.Value = snap.WorldName; cfg.Save(); }
                 break;
             case LocationKind.Residence:
-                ImGui.TextWrapped("Matches housing wards, apartments, private chambers, cottages, houses, mansions.");
+                ImGui.TextWrapped("Housing wards, apartments, chambers, cottages, houses, mansions.");
                 value = loc.Value;
                 if (ImGui.InputText("Optional name filter", ref value, 64)) { loc.Value = value; cfg.Save(); }
                 break;
@@ -230,23 +264,29 @@ public class MainWindow : Window, IDisposable
 
     private static void DrawStates(Configuration cfg, StatusRule rule)
     {
-        ImGui.TextDisabled("Ignore (-) skips the check. Yes requires it. No forbids it.");
-        foreach (var flag in StateChoices)
+        ImGui.TextDisabled("- ignore   Yes require   No forbid");
+        var cols = 2;
+        if (ImGui.BeginTable("states", cols, ImGuiTableFlags.SizingStretchProp))
         {
-            var existing = rule.States.Find(s => s.Flag == flag);
-            var op = existing?.Op ?? MatchOp.Any;
-            var idx = (int)op;
-            ImGui.SetNextItemWidth(70);
-            if (ImGui.Combo(flag.ToString(), ref idx, MatchOps, MatchOps.Length))
+            for (var i = 0; i < StateChoices.Length; i++)
             {
-                if (idx == 0)
-                    rule.States.RemoveAll(s => s.Flag == flag);
-                else if (existing is null)
-                    rule.States.Add(new StateFilter { Flag = flag, Op = (MatchOp)idx });
-                else
-                    existing.Op = (MatchOp)idx;
-                cfg.Save();
+                var flag = StateChoices[i];
+                ImGui.TableNextColumn();
+                var existing = rule.States.Find(s => s.Flag == flag);
+                var idx = (int)(existing?.Op ?? MatchOp.Any);
+                ImGui.SetNextItemWidth(56);
+                if (ImGui.Combo(flag.ToString(), ref idx, MatchOps, MatchOps.Length))
+                {
+                    if (idx == 0)
+                        rule.States.RemoveAll(s => s.Flag == flag);
+                    else if (existing is null)
+                        rule.States.Add(new StateFilter { Flag = flag, Op = (MatchOp)idx });
+                    else
+                        existing.Op = (MatchOp)idx;
+                    cfg.Save();
+                }
             }
+            ImGui.EndTable();
         }
     }
 
@@ -265,15 +305,14 @@ public class MainWindow : Window, IDisposable
         {
             var start = sched.DateStart ?? string.Empty;
             var end = sched.DateEnd ?? string.Empty;
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.InputText("Date start", ref start, 12))
+            ImGui.SetNextItemWidth(110);
+            if (ImGui.InputText("Start date", ref start, 12))
             {
                 sched.DateStart = string.IsNullOrWhiteSpace(start) ? null : start;
                 cfg.Save();
             }
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(120);
-            if (ImGui.InputText("Date end", ref end, 12))
+            ImGui.SetNextItemWidth(110);
+            if (ImGui.InputText("End date", ref end, 12))
             {
                 sched.DateEnd = string.IsNullOrWhiteSpace(end) ? null : end;
                 cfg.Save();
@@ -316,7 +355,6 @@ public class MainWindow : Window, IDisposable
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(50);
                 if (ImGui.InputInt("m##sm", ref sm)) { sched.StartMinute = Math.Clamp(sm, 0, 59); cfg.Save(); }
-                ImGui.SameLine();
                 ImGui.SetNextItemWidth(50);
                 if (ImGui.InputInt("End h", ref eh)) { sched.EndHour = Math.Clamp(eh, 0, 23); cfg.Save(); }
                 ImGui.SameLine();
