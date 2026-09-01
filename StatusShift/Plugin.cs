@@ -162,7 +162,7 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private void OnTerritoryChanged(ushort _)
+    private void OnTerritoryChanged(uint _)
     {
         lastEval = DateTime.MinValue;
         Evaluate();
