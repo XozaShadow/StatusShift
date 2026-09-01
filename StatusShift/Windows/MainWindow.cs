@@ -119,7 +119,7 @@ public class MainWindow : Window, IDisposable
         var terr = string.Join(",", rule.TerritoryIds);
         if (ImGui.InputText("Territory IDs", ref terr, 128))
         {
-            rule.TerritoryIds = ParseUshorts(terr);
+            rule.TerritoryIds = ParseUints(terr);
             cfg.Save();
         }
         ImGui.SameLine();
@@ -261,17 +261,6 @@ public class MainWindow : Window, IDisposable
             ImGui.SameLine();
         }
         ImGui.NewLine();
-    }
-
-    private static List<ushort> ParseUshorts(string raw)
-    {
-        var list = new List<ushort>();
-        foreach (var part in raw.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (ushort.TryParse(part, out var id))
-                list.Add(id);
-        }
-        return list;
     }
 
     private static List<uint> ParseUints(string raw)
