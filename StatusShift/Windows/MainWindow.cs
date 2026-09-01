@@ -46,6 +46,9 @@ public class MainWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
 
+        var snap = plugin.Snapshot();
+        ImGui.TextDisabled($"Now: {snap.TerritoryId} {snap.TerritoryName} | {snap.JobAbbr} | {snap.WorldName}");
+
         var match = plugin.CurrentRule();
         ImGui.Separator();
         ImGui.TextUnformatted(match is null ? "Current match: none" : $"Current match: [{match.Name}] P{match.Priority}");
@@ -78,7 +81,7 @@ public class MainWindow : Window, IDisposable
         }
     }
 
-    private static void DrawRule(Configuration cfg, StatusRule rule, ref int removeAt, int index)
+    private void DrawRule(Configuration cfg, StatusRule rule, ref int removeAt, int index)
     {
         var on = rule.Enabled;
         if (ImGui.Checkbox("On", ref on)) { rule.Enabled = on; cfg.Save(); }
@@ -119,6 +122,13 @@ public class MainWindow : Window, IDisposable
             rule.TerritoryIds = ParseUshorts(terr);
             cfg.Save();
         }
+        ImGui.SameLine();
+        if (ImGui.Button("+ zone"))
+        {
+            var id = plugin.Snapshot().TerritoryId;
+            if (!rule.TerritoryIds.Contains(id)) rule.TerritoryIds.Add(id);
+            cfg.Save();
+        }
 
         var names = string.Join(",", rule.TerritoryNameContains);
         if (ImGui.InputText("Zone name contains", ref names, 200))
@@ -127,6 +137,34 @@ public class MainWindow : Window, IDisposable
             [
                 .. names.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             ];
+            cfg.Save();
+        }
+
+        var jobs = string.Join(",", rule.JobIds);
+        if (ImGui.InputText("Job IDs", ref jobs, 128))
+        {
+            rule.JobIds = ParseUints(jobs);
+            cfg.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("+ job"))
+        {
+            var id = plugin.Snapshot().JobId;
+            if (id != 0 && !rule.JobIds.Contains(id)) rule.JobIds.Add(id);
+            cfg.Save();
+        }
+
+        var worlds = string.Join(",", rule.WorldIds);
+        if (ImGui.InputText("World IDs", ref worlds, 128))
+        {
+            rule.WorldIds = ParseUints(worlds);
+            cfg.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("+ world"))
+        {
+            var id = plugin.Snapshot().WorldId;
+            if (id != 0 && !rule.WorldIds.Contains(id)) rule.WorldIds.Add(id);
             cfg.Save();
         }
 
@@ -231,6 +269,17 @@ public class MainWindow : Window, IDisposable
         foreach (var part in raw.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
         {
             if (ushort.TryParse(part, out var id))
+                list.Add(id);
+        }
+        return list;
+    }
+
+    private static List<uint> ParseUints(string raw)
+    {
+        var list = new List<uint>();
+        foreach (var part in raw.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (uint.TryParse(part, out var id))
                 list.Add(id);
         }
         return list;
