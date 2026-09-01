@@ -59,7 +59,9 @@ internal sealed class RuleEngine(Configuration config)
             return false;
         }
 
-        if (rule.JobIds.Count > 0 && !rule.JobIds.Contains(ctx.JobId))
+        if ((rule.JobIds.Count > 0 || rule.JobAbbrs.Count > 0)
+            && !rule.JobIds.Contains(ctx.JobId)
+            && !rule.JobAbbrs.Any(a => a.Equals(ctx.JobAbbr, StringComparison.OrdinalIgnoreCase)))
             return false;
 
         if (rule.WorldIds.Count > 0 && !rule.WorldIds.Contains(ctx.WorldId))
