@@ -39,7 +39,8 @@ public enum ActivityFlag
     Swimming = 6,
     WatchingCutscene = 7,
     Dead = 8,
-    WeaponDrawn = 9,
+    InParty = 9,
+    BoundByDuty = 10,
 }
 
 [Serializable]
@@ -72,8 +73,8 @@ public class StatusRule
     public List<ushort> TerritoryIds { get; set; } = [];
     public List<string> TerritoryNameContains { get; set; } = [];
     public List<uint> JobIds { get; set; } = [];
+    public List<uint> WorldIds { get; set; } = [];
 
-    // Legacy fields from the first skeleton. Still honored if Schedule is Always and these are set.
     public List<DayOfWeek> Days { get; set; } = [];
     public bool? InDuty { get; set; }
     public string? TimeStart { get; set; }

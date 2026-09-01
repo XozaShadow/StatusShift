@@ -26,50 +26,21 @@ internal sealed class RuleEngine(Configuration config)
         var player = Plugin.ClientState.LocalPlayer;
         var territoryName = ResolveTerritoryName(Plugin.ClientState.TerritoryType);
         var job = player?.ClassJob.Value.Abbreviation.ToString() ?? "";
-        var world = player?.HomeWorld.Value.Name.ToString() ?? "";
+        var world = player?.CurrentWorld.Value.Name.ToString() ?? "";
+        var home = player?.HomeWorld.Value.Name.ToString() ?? "";
         var time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
 
         return rule.SearchComment
             .Replace("{zone}", territoryName, StringComparison.OrdinalIgnoreCase)
             .Replace("{job}", job, StringComparison.OrdinalIgnoreCase)
             .Replace("{world}", world, StringComparison.OrdinalIgnoreCase)
+            .Replace("{home}", home, StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
     }
 
-    private sealed record Context(
-        ushort TerritoryId,
-        string TerritoryName,
-        uint JobId,
-        DateTime Now,
-        HashSet<ActivityFlag> Activities);
+    public GameSnapshot Snapshot() => GameSnapshot.Capture();
 
-    private static Context Snapshot()
-    {
-        var flags = new HashSet<ActivityFlag>();
-        if (Plugin.Condition[ConditionFlag.BoundByDuty]) flags.Add(ActivityFlag.InDuty);
-        if (Plugin.Condition[ConditionFlag.InCombat]) flags.Add(ActivityFlag.InCombat);
-        if (Plugin.Condition[ConditionFlag.Crafting]) flags.Add(ActivityFlag.Crafting);
-        if (Plugin.Condition[ConditionFlag.Gathering]) flags.Add(ActivityFlag.Gathering);
-        if (Plugin.Condition[ConditionFlag.Mounted]) flags.Add(ActivityFlag.Mounted);
-        if (Plugin.Condition[ConditionFlag.InFlight]) flags.Add(ActivityFlag.Flying);
-        if (Plugin.Condition[ConditionFlag.Swimming] || Plugin.Condition[ConditionFlag.Diving]) flags.Add(ActivityFlag.Swimming);
-        if (Plugin.Condition[ConditionFlag.WatchingCutscene] || Plugin.Condition[ConditionFlag.WatchingCutscene78]) flags.Add(ActivityFlag.WatchingCutscene);
-        if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
-
-        var player = Plugin.ClientState.LocalPlayer;
-        if (player is not null && player.StatusFlags.HasFlag(Dalamud.Game.ClientState.Objects.Enums.StatusFlags.WeaponOut))
-            flags.Add(ActivityFlag.WeaponDrawn);
-
-        var territoryId = Plugin.ClientState.TerritoryType;
-        return new Context(
-            territoryId,
-            ResolveTerritoryName(territoryId),
-            player?.ClassJob.RowId ?? 0,
-            DateTime.Now,
-            flags);
-    }
-
-    private static bool Matches(StatusRule rule, Context ctx)
+    private static bool Matches(StatusRule rule, GameSnapshot ctx)
     {
         if (rule.TerritoryIds.Count > 0 && !rule.TerritoryIds.Contains(ctx.TerritoryId))
             return false;
@@ -79,6 +50,9 @@ internal sealed class RuleEngine(Configuration config)
             return false;
 
         if (rule.JobIds.Count > 0 && !rule.JobIds.Contains(ctx.JobId))
+            return false;
+
+        if (rule.WorldIds.Count > 0 && !rule.WorldIds.Contains(ctx.WorldId))
             return false;
 
         if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
@@ -131,7 +105,6 @@ internal sealed class RuleEngine(Configuration config)
     {
         if (sched.AllDay)
             return true;
-
         var start = new TimeSpan(Clamp(sched.StartHour, 0, 23), Clamp(sched.StartMinute, 0, 59), 0);
         var end = new TimeSpan(Clamp(sched.EndHour, 0, 23), Clamp(sched.EndMinute, 0, 59), 0);
         return start <= end ? now >= start && now <= end : now >= start || now <= end;
@@ -151,10 +124,53 @@ internal sealed class RuleEngine(Configuration config)
 
     private static int Clamp(int value, int min, int max) => Math.Min(max, Math.Max(min, value));
 
-    private static string ResolveTerritoryName(ushort territoryId)
+    internal static string ResolveTerritoryName(ushort territoryId)
     {
         var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
         var row = sheet?.GetRowOrDefault(territoryId);
         return row?.PlaceName.Value.Name.ToString() ?? territoryId.ToString();
+    }
+}
+
+internal sealed record GameSnapshot(
+    ushort TerritoryId,
+    string TerritoryName,
+    uint JobId,
+    string JobAbbr,
+    uint WorldId,
+    string WorldName,
+    DateTime Now,
+    HashSet<ActivityFlag> Activities)
+{
+    public static GameSnapshot Capture()
+    {
+        var flags = new HashSet<ActivityFlag>();
+        if (Plugin.Condition[ConditionFlag.BoundByDuty])
+        {
+            flags.Add(ActivityFlag.InDuty);
+            flags.Add(ActivityFlag.BoundByDuty);
+        }
+        if (Plugin.Condition[ConditionFlag.InCombat]) flags.Add(ActivityFlag.InCombat);
+        if (Plugin.Condition[ConditionFlag.Crafting]) flags.Add(ActivityFlag.Crafting);
+        if (Plugin.Condition[ConditionFlag.Gathering]) flags.Add(ActivityFlag.Gathering);
+        if (Plugin.Condition[ConditionFlag.Mounted]) flags.Add(ActivityFlag.Mounted);
+        if (Plugin.Condition[ConditionFlag.InFlight]) flags.Add(ActivityFlag.Flying);
+        if (Plugin.Condition[ConditionFlag.Swimming]) flags.Add(ActivityFlag.Swimming);
+        if (Plugin.Condition[ConditionFlag.WatchingCutscene] || Plugin.Condition[ConditionFlag.OccupiedInCutSceneEvent])
+            flags.Add(ActivityFlag.WatchingCutscene);
+        if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
+        if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
+
+        var player = Plugin.ClientState.LocalPlayer;
+        var territoryId = Plugin.ClientState.TerritoryType;
+        return new GameSnapshot(
+            territoryId,
+            RuleEngine.ResolveTerritoryName(territoryId),
+            player?.ClassJob.RowId ?? 0,
+            player?.ClassJob.Value.Abbreviation.ToString() ?? "",
+            player?.CurrentWorld.RowId ?? 0,
+            player?.CurrentWorld.Value.Name.ToString() ?? "",
+            DateTime.Now,
+            flags);
     }
 }
