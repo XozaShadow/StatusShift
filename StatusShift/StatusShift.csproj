@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.0.1.0</Version>
+    <Version>0.1.0.0</Version>
     <Author>XozaShadow</Author>
     <Name>StatusShift</Name>
-    <Punchline>Shift search comment and online status by zone, time, duty, and schedule.</Punchline>
-    <Description>Profiles and rules that change your search comment and online status based on territory, duty, job, local time, and weekday. Confirm mode by default; optional auto-apply with a cooldown.</Description>
+    <Punchline>Shift search comment and online status by zone, activity, and schedule.</Punchline>
+    <Description>Rules change your search comment and online status from zone, duty, activity, job, world, and UniFi-style schedules. Confirm mode by default.</Description>
     <RepoUrl>https://github.com/XozaShadow/StatusShift</RepoUrl>
+    <PackageProjectUrl>https://github.com/XozaShadow/StatusShift</PackageProjectUrl>
     <Tags>status;search;comment;roleplay;schedule;zone</Tags>
     <InternalName>StatusShift</InternalName>
     <ApplicableVersion>any</ApplicableVersion>
+    <DalamudApiLevel>15</DalamudApiLevel>
   </PropertyGroup>
 </Project>

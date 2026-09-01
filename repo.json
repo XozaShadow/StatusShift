@@ -1,0 +1,24 @@
+[
+  {
+    "Author": "XozaShadow",
+    "Name": "StatusShift",
+    "Punchline": "Shift search comment and online status by zone, activity, and schedule.",
+    "Description": "Rules change your search comment and online status from zone, duty, activity, job, world, and UniFi-style schedules (Always / Daily / Weekly / One Time / Custom). Confirm mode by default; optional auto-apply.",
+    "InternalName": "StatusShift",
+    "AssemblyVersion": "0.1.0.0",
+    "TestingAssemblyVersion": "0.1.0.0",
+    "RepoUrl": "https://github.com/XozaShadow/StatusShift",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "TestingDalamudApiLevel": 15,
+    "IsHide": false,
+    "IsTestingExclusive": false,
+    "DownloadCount": 0,
+    "LastUpdate": 1756742400,
+    "LoadPriority": 0,
+    "DownloadLinkInstall": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "DownloadLinkUpdate": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "DownloadLinkTesting": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "Tags": ["status", "search", "comment", "roleplay", "schedule", "zone"]
+  }
+]

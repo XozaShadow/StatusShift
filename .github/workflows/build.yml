@@ -1,0 +1,62 @@
+name: Build StatusShift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          $dest = "$env:AppData\XIVLauncher\addon\Hooks\dev"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud.zip
+          Expand-Archive -Force dalamud.zip $dest
+
+      - name: Build
+        run: dotnet build StatusShift.slnx --configuration Release
+
+      - name: Stage package
+        shell: pwsh
+        run: |
+          $out = "artifacts/StatusShift"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $src = Get-ChildItem -Recurse -Directory | Where-Object { $_.Name -eq "StatusShift" -and $_.FullName -match "bin" } | Select-Object -First 1
+          if (-not $src) { $src = Get-Item "StatusShift\bin\x64\Release\StatusShift" -ErrorAction SilentlyContinue }
+          if (-not $src) { $src = Get-Item "StatusShift\bin\Release" -ErrorAction SilentlyContinue }
+          if (-not $src) { throw "Could not find build output" }
+          Copy-Item "$($src.FullName)\*" $out -Recurse -Force
+          if (-not (Test-Path "$out\StatusShift.dll")) {
+            Get-ChildItem -Recurse StatusShift\bin | Select-Object FullName
+            throw "StatusShift.dll missing"
+          }
+          Compress-Archive -Path "$out\*" -DestinationPath artifacts/StatusShift.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StatusShift
+          path: |
+            artifacts/StatusShift/**
+            artifacts/StatusShift.zip
+          if-no-files-found: error
+
+      - name: Attach zip to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/StatusShift.zip
