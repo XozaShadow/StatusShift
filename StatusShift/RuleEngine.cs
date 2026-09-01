@@ -11,7 +11,7 @@ internal sealed class RuleEngine(Configuration config)
 {
     public StatusRule? FindMatch()
     {
-        if (!Plugin.ClientState.IsLoggedIn || Plugin.ClientState.LocalPlayer is null)
+        if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded)
             return null;
 
         var ctx = Snapshot();
@@ -23,18 +23,14 @@ internal sealed class RuleEngine(Configuration config)
 
     public string ResolveComment(StatusRule rule)
     {
-        var player = Plugin.ClientState.LocalPlayer;
-        var territoryName = ResolveTerritoryName(Plugin.ClientState.TerritoryType);
-        var job = player?.ClassJob.Value.Abbreviation.ToString() ?? "";
-        var world = player?.CurrentWorld.Value.Name.ToString() ?? "";
-        var home = player?.HomeWorld.Value.Name.ToString() ?? "";
+        var snap = GameSnapshot.Capture();
         var time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
 
         return rule.SearchComment
-            .Replace("{zone}", territoryName, StringComparison.OrdinalIgnoreCase)
-            .Replace("{job}", job, StringComparison.OrdinalIgnoreCase)
-            .Replace("{world}", world, StringComparison.OrdinalIgnoreCase)
-            .Replace("{home}", home, StringComparison.OrdinalIgnoreCase)
+            .Replace("{zone}", snap.TerritoryName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
+            .Replace("{world}", snap.WorldName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{home}", snap.HomeWorldName, StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -124,7 +120,7 @@ internal sealed class RuleEngine(Configuration config)
 
     private static int Clamp(int value, int min, int max) => Math.Min(max, Math.Max(min, value));
 
-    internal static string ResolveTerritoryName(ushort territoryId)
+    internal static string ResolveTerritoryName(uint territoryId)
     {
         var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
         var row = sheet?.GetRowOrDefault(territoryId);
@@ -133,12 +129,13 @@ internal sealed class RuleEngine(Configuration config)
 }
 
 public sealed record GameSnapshot(
-    ushort TerritoryId,
+    uint TerritoryId,
     string TerritoryName,
     uint JobId,
     string JobAbbr,
     uint WorldId,
     string WorldName,
+    string HomeWorldName,
     DateTime Now,
     HashSet<ActivityFlag> Activities)
 {
@@ -161,15 +158,20 @@ public sealed record GameSnapshot(
         if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
         if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
 
-        var player = Plugin.ClientState.LocalPlayer;
+        var ps = Plugin.PlayerState;
         var territoryId = Plugin.ClientState.TerritoryType;
+        var job = ps.IsLoaded ? ps.ClassJob : default;
+        var world = ps.IsLoaded ? ps.CurrentWorld : default;
+        var home = ps.IsLoaded ? ps.HomeWorld : default;
+
         return new GameSnapshot(
             territoryId,
             RuleEngine.ResolveTerritoryName(territoryId),
-            player?.ClassJob.RowId ?? 0,
-            player?.ClassJob.Value.Abbreviation.ToString() ?? "",
-            player?.CurrentWorld.RowId ?? 0,
-            player?.CurrentWorld.Value.Name.ToString() ?? "",
+            job.RowId,
+            job.IsValid ? job.Value.Abbreviation.ToString() : "",
+            world.RowId,
+            world.IsValid ? world.Value.Name.ToString() : "",
+            home.IsValid ? home.Value.Name.ToString() : "",
             DateTime.Now,
             flags);
     }
