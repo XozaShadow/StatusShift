@@ -28,6 +28,7 @@ internal sealed class RuleEngine(Configuration config)
 
         return rule.SearchComment
             .Replace("{zone}", snap.TerritoryName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{region}", snap.RegionName, StringComparison.OrdinalIgnoreCase)
             .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
             .Replace("{world}", snap.WorldName, StringComparison.OrdinalIgnoreCase)
             .Replace("{home}", snap.HomeWorldName, StringComparison.OrdinalIgnoreCase)
@@ -38,12 +39,25 @@ internal sealed class RuleEngine(Configuration config)
 
     private static bool Matches(StatusRule rule, GameSnapshot ctx)
     {
-        if (rule.TerritoryIds.Count > 0 && !rule.TerritoryIds.Contains(ctx.TerritoryId))
+        if (!ScheduleMatches(rule, ctx.Now))
             return false;
 
-        if (rule.TerritoryNameContains.Count > 0 &&
-            !rule.TerritoryNameContains.Any(n => ctx.TerritoryName.Contains(n, StringComparison.OrdinalIgnoreCase)))
+        if (!LocationMatches(rule, ctx))
             return false;
+
+        if (rule.States.Count > 0)
+        {
+            foreach (var filter in rule.States)
+            {
+                var present = ctx.Activities.Contains(filter.Flag);
+                if (filter.Op == MatchOp.Yes && !present) return false;
+                if (filter.Op == MatchOp.No && present) return false;
+            }
+        }
+        else if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
+        {
+            return false;
+        }
 
         if (rule.JobIds.Count > 0 && !rule.JobIds.Contains(ctx.JobId))
             return false;
@@ -51,13 +65,62 @@ internal sealed class RuleEngine(Configuration config)
         if (rule.WorldIds.Count > 0 && !rule.WorldIds.Contains(ctx.WorldId))
             return false;
 
-        if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
-            return false;
-
         if (rule.InDuty == true && !ctx.Activities.Contains(ActivityFlag.InDuty))
             return false;
 
-        return ScheduleMatches(rule, ctx.Now);
+        return true;
+    }
+
+    private static bool LocationMatches(StatusRule rule, GameSnapshot ctx)
+    {
+        var loc = rule.Location ?? new LocationFilter();
+        var value = loc.Value?.Trim() ?? string.Empty;
+
+        if (loc.Kind != LocationKind.Any && loc.Kind != LocationKind.Residence && string.IsNullOrWhiteSpace(value)
+            && rule.TerritoryIds.Count == 0 && rule.TerritoryNameContains.Count == 0)
+            return true;
+
+        switch (loc.Kind)
+        {
+            case LocationKind.Any:
+                break;
+            case LocationKind.TerritoryId:
+                if (!uint.TryParse(value, out var tid) || tid != ctx.TerritoryId)
+                    return false;
+                break;
+            case LocationKind.ZoneName:
+                if (!ctx.TerritoryName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                break;
+            case LocationKind.Region:
+                if (!ctx.RegionName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                break;
+            case LocationKind.ZoneGroup:
+                if (!ctx.ZoneGroupName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                break;
+            case LocationKind.World:
+                if (!ctx.WorldName.Contains(value, StringComparison.OrdinalIgnoreCase)
+                    && !(uint.TryParse(value, out var wid) && wid == ctx.WorldId))
+                    return false;
+                break;
+            case LocationKind.Residence:
+                if (!ctx.InResidence) return false;
+                if (!string.IsNullOrWhiteSpace(value)
+                    && !ctx.TerritoryName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                break;
+        }
+
+        if (rule.TerritoryIds.Count > 0 && !rule.TerritoryIds.Contains(ctx.TerritoryId))
+            return false;
+
+        if (rule.TerritoryNameContains.Count > 0 &&
+            !rule.TerritoryNameContains.Any(n => ctx.TerritoryName.Contains(n, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        return true;
     }
 
     private static bool ScheduleMatches(StatusRule rule, DateTime now)
@@ -120,22 +183,39 @@ internal sealed class RuleEngine(Configuration config)
 
     private static int Clamp(int value, int min, int max) => Math.Min(max, Math.Max(min, value));
 
-    internal static string ResolveTerritoryName(uint territoryId)
+    internal static (string Name, string Region, string Group, bool Housing) ResolvePlace(uint territoryId)
     {
         var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
         var row = sheet?.GetRowOrDefault(territoryId);
-        return row?.PlaceName.Value.Name.ToString() ?? territoryId.ToString();
+        if (row is null)
+            return (territoryId.ToString(), string.Empty, string.Empty, false);
+
+        var name = row.Value.PlaceName.Value.Name.ToString();
+        var region = row.Value.PlaceNameRegion.Value.Name.ToString();
+        var group = row.Value.PlaceNameZone.Value.Name.ToString();
+        var housing = name.Contains("Ward", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("Apartment", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("Cottage", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("House", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("Mansion", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("Chambers", StringComparison.OrdinalIgnoreCase)
+                      || name.Contains("Plot", StringComparison.OrdinalIgnoreCase)
+                      || region.Contains("Residential", StringComparison.OrdinalIgnoreCase);
+        return (name, region, group, housing);
     }
 }
 
 public sealed record GameSnapshot(
     uint TerritoryId,
     string TerritoryName,
+    string RegionName,
+    string ZoneGroupName,
     uint JobId,
     string JobAbbr,
     uint WorldId,
     string WorldName,
     string HomeWorldName,
+    bool InResidence,
     DateTime Now,
     HashSet<ActivityFlag> Activities)
 {
@@ -157,22 +237,43 @@ public sealed record GameSnapshot(
             flags.Add(ActivityFlag.WatchingCutscene);
         if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
         if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
+        if (Plugin.ClientState.IsPvP) flags.Add(ActivityFlag.PvP);
+
+        TryFlag(ConditionFlag.Diving, ActivityFlag.Diving, flags);
+        TryFlag(ConditionFlag.UsingPartyFinder, ActivityFlag.WaitingForDutyFinder, flags);
+
+        var place = RuleEngine.ResolvePlace(Plugin.ClientState.TerritoryType);
+        if (place.Housing) flags.Add(ActivityFlag.InResidence);
 
         var ps = Plugin.PlayerState;
-        var territoryId = Plugin.ClientState.TerritoryType;
         var job = ps.IsLoaded ? ps.ClassJob : default;
         var world = ps.IsLoaded ? ps.CurrentWorld : default;
         var home = ps.IsLoaded ? ps.HomeWorld : default;
 
         return new GameSnapshot(
-            territoryId,
-            RuleEngine.ResolveTerritoryName(territoryId),
+            Plugin.ClientState.TerritoryType,
+            place.Name,
+            place.Region,
+            place.Group,
             job.RowId,
             job.IsValid ? job.Value.Abbreviation.ToString() : "",
             world.RowId,
             world.IsValid ? world.Value.Name.ToString() : "",
             home.IsValid ? home.Value.Name.ToString() : "",
+            place.Housing,
             DateTime.Now,
             flags);
+    }
+
+    private static void TryFlag(ConditionFlag flag, ActivityFlag mapped, HashSet<ActivityFlag> flags)
+    {
+        try
+        {
+            if (Plugin.Condition[flag]) flags.Add(mapped);
+        }
+        catch
+        {
+            // Flag names can shift between Dalamud builds.
+        }
     }
 }
