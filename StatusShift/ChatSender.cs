@@ -6,6 +6,23 @@ namespace StatusShift;
 
 internal static class ChatSender
 {
+    public static readonly string[] StatusLabels =
+    [
+        "Leave alone",
+        "Online",
+        "Away from Keyboard",
+        "Busy",
+        "Role-playing",
+        "Looking to Meld Materia",
+        "Looking for Party",
+        "Mentor",
+        "PvE Mentor",
+        "PvP Mentor",
+        "Trade Mentor",
+        "Returner",
+        "New Adventurer",
+    ];
+
     public static bool TrySendCommand(string command)
     {
         if (string.IsNullOrWhiteSpace(command))
@@ -41,10 +58,17 @@ internal static class ChatSender
     public static string? ToStatusCommand(OnlineStatusAction action) => action switch
     {
         OnlineStatusAction.Online => "/busy off",
-        OnlineStatusAction.Roleplaying => "/roleplaying on",
-        OnlineStatusAction.Busy => "/busy on",
         OnlineStatusAction.Away => "/away on",
+        OnlineStatusAction.Busy => "/busy on",
+        OnlineStatusAction.Roleplaying => "/roleplaying on",
+        OnlineStatusAction.LookingToMeld => "/lookingtomeld on",
         OnlineStatusAction.LookingForParty => "/lookingforparty on",
+        OnlineStatusAction.Mentor => "/mentor on",
+        OnlineStatusAction.PveMentor => "/pvementor on",
+        OnlineStatusAction.PvpMentor => "/pvpmentor on",
+        OnlineStatusAction.TradeMentor => "/tradementor on",
+        OnlineStatusAction.Returner => "/returner on",
+        OnlineStatusAction.NewAdventurer => "/beginner on",
         _ => null,
     };
 }

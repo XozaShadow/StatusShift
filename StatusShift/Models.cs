@@ -7,10 +7,17 @@ public enum OnlineStatusAction
 {
     LeaveAlone = 0,
     Online = 1,
-    Roleplaying = 2,
+    Away = 2,
     Busy = 3,
-    Away = 4,
-    LookingForParty = 5,
+    Roleplaying = 4,
+    LookingToMeld = 5,
+    LookingForParty = 6,
+    Mentor = 7,
+    PveMentor = 8,
+    PvpMentor = 9,
+    TradeMentor = 10,
+    Returner = 11,
+    NewAdventurer = 12,
 }
 
 public enum ApplyMode
@@ -41,6 +48,30 @@ public enum ActivityFlag
     Dead = 8,
     InParty = 9,
     BoundByDuty = 10,
+    Diving = 11,
+    WeaponDrawn = 12,
+    WaitingForDutyFinder = 13,
+    PvP = 14,
+    PartyLeader = 15,
+    InResidence = 16,
+}
+
+public enum LocationKind
+{
+    Any = 0,
+    TerritoryId = 1,
+    ZoneName = 2,
+    Region = 3,
+    ZoneGroup = 4,
+    World = 5,
+    Residence = 6,
+}
+
+public enum MatchOp
+{
+    Any = 0,
+    Yes = 1,
+    No = 2,
 }
 
 [Serializable]
@@ -58,6 +89,20 @@ public class RuleSchedule
 }
 
 [Serializable]
+public class LocationFilter
+{
+    public LocationKind Kind { get; set; } = LocationKind.Any;
+    public string Value { get; set; } = string.Empty;
+}
+
+[Serializable]
+public class StateFilter
+{
+    public ActivityFlag Flag { get; set; }
+    public MatchOp Op { get; set; } = MatchOp.Yes;
+}
+
+[Serializable]
 public class StatusRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -67,14 +112,19 @@ public class StatusRule
 
     public string SearchComment { get; set; } = string.Empty;
     public OnlineStatusAction OnlineStatus { get; set; } = OnlineStatusAction.LeaveAlone;
+    public bool RevertWhenFalse { get; set; }
+    public OnlineStatusAction FallbackStatus { get; set; } = OnlineStatusAction.Online;
+    public string FallbackComment { get; set; } = string.Empty;
 
     public RuleSchedule Schedule { get; set; } = new();
+    public List<StateFilter> States { get; set; } = [];
+    public LocationFilter Location { get; set; } = new();
+
     public List<ActivityFlag> Activities { get; set; } = [];
     public List<uint> TerritoryIds { get; set; } = [];
     public List<string> TerritoryNameContains { get; set; } = [];
     public List<uint> JobIds { get; set; } = [];
     public List<uint> WorldIds { get; set; } = [];
-
     public List<DayOfWeek> Days { get; set; } = [];
     public bool? InDuty { get; set; }
     public string? TimeStart { get; set; }
