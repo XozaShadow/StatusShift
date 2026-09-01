@@ -2,8 +2,6 @@
 
 Dalamud plugin that shifts your FFXIV **search comment** and **online status** based on zone, duty, job, time, and weekday.
 
-Private repo. Not intended for the official Dalamud plugin repository while auto-apply is enabled — that writes search info without a click.
-
 ## Commands
 
 | Command | What it does |
