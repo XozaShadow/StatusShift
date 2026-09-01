@@ -8,11 +8,13 @@ namespace StatusShift.Windows;
 public class ConfigWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
+    private string importBuf = string.Empty;
+    private string lastMsg = string.Empty;
 
     public ConfigWindow(Plugin plugin) : base("StatusShift Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(380, 220);
+        Size = new Vector2(520, 420);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -50,6 +52,29 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
-        ImGui.TextWrapped("Auto mode sends /searchcomment and status commands when a rule changes. Keep Confirm on until you have tested it.");
+        ImGui.Separator();
+        ImGui.TextUnformatted("Install");
+        ImGui.TextWrapped("Dev plugin: add StatusShift.dll from bin/x64/Debug or a CI artifact.");
+        ImGui.TextWrapped("Custom repo (repo must be public): https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json");
+
+        ImGui.Separator();
+        if (ImGui.Button("Copy rules JSON"))
+        {
+            ImGui.SetClipboardText(plugin.ExportRulesJson());
+            lastMsg = "Rules copied to clipboard.";
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Import clipboard JSON"))
+        {
+            var clip = ImGui.GetClipboardText();
+            lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Imported." : err;
+        }
+
+        ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 120));
+        if (ImGui.Button("Import box"))
+            lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Imported." : err2;
+
+        if (!string.IsNullOrEmpty(lastMsg))
+            ImGui.TextWrapped(lastMsg);
     }
 }

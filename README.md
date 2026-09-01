@@ -1,40 +1,54 @@
 # StatusShift
 
-Dalamud plugin that shifts your FFXIV **search comment** and **online status** based on zone, duty, activity, job, and schedule.
+Dalamud plugin that shifts FFXIV **search comment** and **online status** from zone, duty, activity, job, world, and schedule.
 
-Private repo. Auto-apply writes search info without a click, so it is not aimed at the official Dalamud repo yet.
+## Install
+
+### A. Dev plugin (DLL) — works with a private repo
+
+1. Build Debug on your PC, **or** download the `StatusShift` artifact from GitHub Actions.
+2. `/xlsettings` → Experimental → Dev Plugins → add the path to `StatusShift.dll`.
+3. Enable it. Reload with `/xlplugins`.
+
+Typical local path after a Debug build:
+
+`...\StatusShift\StatusShift\bin\x64\Debug\StatusShift\StatusShift.dll`
+
+### B. Custom plugin repo (JSON) — repo must be **public**
+
+Dalamud custom repos are unauthenticated HTTP GET. A private GitHub repo will 404.
+
+1. Make [XozaShadow/StatusShift](https://github.com/XozaShadow/StatusShift) public, or host `repo.json` + the zip somewhere public.
+2. Create a GitHub Release and attach `StatusShift.zip` from Actions (the workflow does this on `release` publish).
+3. `/xlsettings` → Experimental → Custom Plugin Repositories → add:
+
+```
+https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json
+```
+
+Same file also lives as `pluginmaster.json`.
+
+4. Save, then `/xlplugins` and install StatusShift.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `/statusshift` or `/ss` | Open the main window |
-| `/ss config` | Open settings |
-| `/ss apply` | Apply the current matching rule now |
-| `/ss pause` / `/ss resume` | Stop or resume evaluation |
-| `/ss now` | Print the rule that would apply |
+`/statusshift` `/ss` `/ss apply` `/ss pause` `/ss resume` `/ss now` `/ss zone` `/ss config`
 
 ## Rules
 
-Highest **Priority** wins.
+Highest priority wins.
 
-**Schedule** (UniFi-style): Always, Daily, Weekly, One Time, Custom.
-Weekly/Custom use M-T-W-T-F-S-S. Optional All Day or start/end time. One Time/Custom take `yyyy-MM-dd` range.
+- Schedule: Always, Daily, Weekly, One Time, Custom
+- Activity AND: duty, combat, crafting, gathering, mounted, flying, swimming, cutscene, dead, party
+- Territory IDs, zone name contains, job IDs, world IDs
+- Tokens: `{zone}` `{job}` `{world}` `{home}` `{time}`
 
-**Activity** (DynamicBridge-style, AND): InDuty, InCombat, Crafting, Gathering, Mounted, Flying, Swimming, WatchingCutscene, Dead, WeaponDrawn. Empty list = any.
-
-Also: territory IDs, zone name contains, job IDs.
-
-Tokens: `{zone}` `{job}` `{world}` `{time}`
-
-**Apply mode**
-- Confirm (default): notify only, then `/ss apply`.
-- Auto: send commands when the resolved comment/status changes. Cooldown applies.
+Confirm mode is default. Auto sends `/searchcomment` and status commands after cooldown.
 
 ## Build
 
-1. Open `StatusShift.slnx` and build Debug.
-2. `/xlsettings` → Experimental → add `StatusShift/bin/x64/Debug/StatusShift.dll`.
-3. Enable under Dev Plugins.
+Needs Windows + .NET 10 + Dalamud (run the game with XIVLauncher once, or let CI download `dalamud-distrib`).
 
-SDK: `Dalamud.NET.Sdk/15.0.0`.
+```
+dotnet build StatusShift.slnx -c Release
+```

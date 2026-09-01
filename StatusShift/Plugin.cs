@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using Dalamud.Game.Command;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
@@ -18,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static ICondition Condition { get; private set; } = null!;
+    [PluginService] internal static IPartyList PartyList { get; private set; } = null!;
     [PluginService] internal static IChatGui Chat { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
@@ -49,7 +51,7 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open StatusShift. /ss apply | pause | resume | now | config",
+            HelpMessage = "Open StatusShift. /ss apply | pause | resume | now | config | zone",
         });
         CommandManager.AddHandler(CommandAlias, new CommandInfo(OnCommand)
         {
@@ -87,10 +89,36 @@ public sealed class Plugin : IDalamudPlugin
 
     public void ToggleConfigUi() => configWindow.Toggle();
     public void ToggleMainUi() => mainWindow.Toggle();
-
     public StatusRule? CurrentRule() => engine.FindMatch();
-
     public string PreviewComment(StatusRule rule) => engine.ResolveComment(rule);
+    public GameSnapshot Snapshot() => engine.Snapshot();
+
+    public string ExportRulesJson()
+    {
+        return JsonSerializer.Serialize(Configuration.Rules, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    public bool TryImportRulesJson(string json, out string error)
+    {
+        error = string.Empty;
+        try
+        {
+            var rules = JsonSerializer.Deserialize<System.Collections.Generic.List<StatusRule>>(json);
+            if (rules is null)
+            {
+                error = "Empty import.";
+                return false;
+            }
+            Configuration.Rules = rules;
+            Configuration.Save();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
 
     public bool TryApply(StatusRule? rule = null, bool force = false)
     {
@@ -148,6 +176,12 @@ public sealed class Plugin : IDalamudPlugin
                 Notify("Resumed.");
                 Evaluate(forceNotice: true);
                 break;
+            case "zone":
+            {
+                var snap = Snapshot();
+                Notify($"Zone {snap.TerritoryId} {snap.TerritoryName} | job {snap.JobId} {snap.JobAbbr} | world {snap.WorldId} {snap.WorldName}");
+                break;
+            }
             case "now":
             {
                 var rule = engine.FindMatch();
