@@ -14,7 +14,7 @@ public class ConfigWindow : Window, IDisposable
     public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.0 Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(520, 420);
+        Size = new Vector2(520, 520);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -24,6 +24,7 @@ public class ConfigWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
 
+        ImGui.TextUnformatted("Apply");
         var mode = (int)cfg.ApplyMode;
         if (ImGui.Combo("Apply mode", ref mode, ["Confirm (notify only)", "Auto"], 2))
         {
@@ -45,35 +46,46 @@ public class ConfigWindow : Window, IDisposable
             cfg.Save();
         }
 
-        var notify = cfg.NotifyInChat;
-        if (ImGui.Checkbox("Notify in chat", ref notify))
-        {
-            cfg.NotifyInChat = notify;
-            cfg.Save();
-        }
+        ImGui.Separator();
+        ImGui.TextUnformatted("Skip checks while");
+        Toggle("Cutscene", () => cfg.SkipWhileCutscene, v => cfg.SkipWhileCutscene = v);
+        Toggle("Dead", () => cfg.SkipWhileDead, v => cfg.SkipWhileDead = v);
+        Toggle("In duty", () => cfg.SkipWhileDuty, v => cfg.SkipWhileDuty = v);
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Install");
-        ImGui.TextWrapped("Dev plugin: add StatusShift.dll from a CI artifact.");
+        ImGui.TextUnformatted("Display");
+        Toggle("Notify in chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v);
+        Toggle("Show current location/job at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
+        Toggle("Open main window on load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v);
 
         ImGui.Separator();
-        if (ImGui.Button("Copy rules JSON"))
+        if (ImGui.Button("Copy all rules JSON"))
         {
             ImGui.SetClipboardText(plugin.ExportRulesJson());
-            lastMsg = "Rules copied to clipboard.";
+            lastMsg = "All rules copied.";
         }
         ImGui.SameLine();
-        if (ImGui.Button("Import clipboard JSON"))
+        if (ImGui.Button("Replace all from clipboard"))
         {
             var clip = ImGui.GetClipboardText();
-            lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Imported." : err;
+            lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Replaced all rules." : err;
         }
 
-        ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 120));
-        if (ImGui.Button("Import box"))
-            lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Imported." : err2;
+        ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 100));
+        if (ImGui.Button("Import box as full replace"))
+            lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Replaced all rules." : err2;
 
         if (!string.IsNullOrEmpty(lastMsg))
             ImGui.TextWrapped(lastMsg);
+    }
+
+    private void Toggle(string label, Func<bool> get, Action<bool> set)
+    {
+        var v = get();
+        if (ImGui.Checkbox(label, ref v))
+        {
+            set(v);
+            plugin.Configuration.Save();
+        }
     }
 }
