@@ -10,21 +10,7 @@ public partial class MainWindow
 {
     private void DrawRule(Configuration cfg, StatusRule rule, ref StatusRule? remove)
     {
-        if (ImGui.BeginTable("hdr", 3, ImGuiTableFlags.SizingStretchProp))
-        {
-            ImGui.TableNextColumn();
-            var on = rule.Enabled;
-            if (ImGui.Checkbox("On", ref on)) { rule.Enabled = on; cfg.Save(); }
-            ImGui.TableNextColumn();
-            ImGui.SetNextItemWidth(-1);
-            var name = rule.Name;
-            if (ImGui.InputText("##name", ref name, 64)) { rule.Name = name; cfg.Save(); }
-            ImGui.TableNextColumn();
-            ImGui.SetNextItemWidth(80);
-            var prio = rule.Priority;
-            if (ImGui.InputInt("Prio", ref prio)) { rule.Priority = prio; cfg.Save(); }
-            ImGui.EndTable();
-        }
+        DrawRuleMeta(cfg, rule);
 
         if (ImGui.TreeNode("At schedule"))
         {
@@ -87,7 +73,7 @@ public partial class MainWindow
             rule.Command = cmd;
             cfg.Save();
         }
-        Hint("Optional. Runs even if status is Leave alone. Example: /sit");
+        Hint("Optional. /sit is fine. /ss apply runs once when this rule starts matching. /ss pause and mode changes are blocked. Rerun never repeats /ss.");
         if (!string.IsNullOrWhiteSpace(rule.Command))
         {
             var rerun = rule.RerunCommand;
@@ -392,7 +378,7 @@ public partial class MainWindow
         if (ImGui.Button("Add current job"))
         {
             var snap = plugin.Snapshot();
-            if (!string.IsNullOrEmpty(snap.JobAbbr) && !rule.JobAbbrs.Contains(snap.JobAbbr, StringComparer.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(snap.JobAbbr) && !rule.JobAbbrs.Contains(snap.JobAbbr, StringComparison.OrdinalIgnoreCase))
                 rule.JobAbbrs.Add(snap.JobAbbr);
             if (snap.JobId != 0 && !rule.JobIds.Contains(snap.JobId)) rule.JobIds.Add(snap.JobId);
             cfg.Save();
