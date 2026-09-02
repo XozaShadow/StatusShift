@@ -7,7 +7,7 @@ namespace StatusShift;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 4;
+    public int Version { get; set; } = 5;
 
     public bool Enabled { get; set; } = true;
     public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
@@ -21,7 +21,11 @@ public class Configuration : IPluginConfiguration
     public bool ShowSnapshot { get; set; } = true;
     public List<StatusRule> Rules { get; set; } = DefaultRules();
 
-    public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
+    public void Save()
+    {
+        Plugin.PluginInterface.SavePluginConfig(this);
+        RuleStore.Save(this);
+    }
 
     private static List<StatusRule> DefaultRules() =>
     [
