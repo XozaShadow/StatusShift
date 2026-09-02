@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace StatusShift;
+namespace StatusShift.Windows;
 
 internal static class ListText
 {
