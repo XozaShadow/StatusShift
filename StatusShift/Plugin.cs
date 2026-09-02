@@ -70,6 +70,9 @@ public sealed class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged += OnTerritoryChanged;
         ClientState.Login += OnLogin;
         Framework.Update += OnFrameworkUpdate;
+
+        if (Configuration.OpenUiOnLoad)
+            mainWindow.IsOpen = true;
     }
 
     public void Dispose()
@@ -94,7 +97,6 @@ public sealed class Plugin : IDalamudPlugin
     public GameSnapshot Snapshot() => engine.Snapshot();
 
     public string ExportRulesJson() => JsonSerializer.Serialize(Configuration.Rules, JsonOpts);
-
     public string ExportRuleJson(StatusRule rule) => JsonSerializer.Serialize(rule, JsonOpts);
 
     public bool TryImportRulesJson(string json, out string error)
@@ -201,7 +203,7 @@ public sealed class Plugin : IDalamudPlugin
             case "zone":
             {
                 var snap = Snapshot();
-                Notify($"{snap.TerritoryId} {snap.TerritoryName} i{snap.Instance} / {snap.RegionName} | {snap.JobAbbr} | {snap.WorldName}");
+                Notify($"{snap.WorldName} · {snap.TerritoryName} ({snap.TerritoryId}) · {snap.Housing.Summary} · {snap.JobAbbr}");
                 break;
             }
             case "now":
