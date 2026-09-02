@@ -11,10 +11,10 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
-    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.2 Settings###StatusShiftConfig")
+    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.3 Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(520, 520);
+        Size = new Vector2(520, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -57,6 +57,10 @@ public class ConfigWindow : Window, IDisposable
         Toggle("Notify in chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v);
         Toggle("Show current location/job at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
         Toggle("Open main window on load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v);
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Rules are stored in the plugin config folder as rules.json.");
+        ImGui.TextDisabled("That file is kept across plugin updates.");
 
         ImGui.Separator();
         if (ImGui.Button("Copy all rules JSON"))
