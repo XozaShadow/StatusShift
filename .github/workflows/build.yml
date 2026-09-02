@@ -45,13 +45,21 @@ jobs:
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           Copy-Item "$($dll.DirectoryName)\*" $out -Recurse -Force
           New-Item -ItemType Directory -Force -Path "$out\images" | Out-Null
-          if (Test-Path "images\icon.png") {
-            Copy-Item "images\icon.png" "$out\images\icon.png" -Force
+          $icon = $null
+          foreach ($candidate in @(
+            "images\icon.png",
+            "$($dll.DirectoryName)\images\icon.png",
+            "$($dll.DirectoryName)\icon.png"
+          )) {
+            if (Test-Path $candidate) { $icon = $candidate; break }
           }
+          if (-not $icon) { throw "icon.png not found to package" }
+          Copy-Item $icon "$out\images\icon.png" -Force
+          Copy-Item $icon "$out\icon.png" -Force
           if (-not (Test-Path "$out\StatusShift.dll")) { throw "Copy failed" }
           if (-not (Test-Path "$out\images\icon.png")) { throw "images/icon.png missing from package" }
           Compress-Archive -Path "$out\*" -DestinationPath artifacts/StatusShift.zip -Force
-          Write-Host "Packaged from $($dll.FullName)"
+          Write-Host "Packaged from $($dll.FullName) with icon $icon"
 
       - uses: actions/upload-artifact@v4
         with:

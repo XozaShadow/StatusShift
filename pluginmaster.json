@@ -5,7 +5,7 @@
     "Punchline": "Shift search comment and online status by zone, activity, and schedule.",
     "Description": "Rules change your search comment, online status, and optional commands from zone, duty, activity, job, world, and schedule.",
     "InternalName": "StatusShift",
-    "AssemblyVersion": "0.1.2.0",
+    "AssemblyVersion": "0.1.3.0",
     "RepoUrl": "https://github.com/XozaShadow/StatusShift",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
