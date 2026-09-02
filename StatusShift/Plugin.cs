@@ -41,11 +41,15 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime lastEval = DateTime.MinValue;
     private DateTime lastApply = DateTime.MinValue;
     private DateTime lastCommandAt = DateTime.MinValue;
+    private DateTime pendingSince = DateTime.MinValue;
+    private DateTime? pauseUntil;
     private string lastAppliedComment = string.Empty;
     private OnlineStatusAction lastAppliedStatus = OnlineStatusAction.LeaveAlone;
     private string lastAppliedCommand = string.Empty;
+    private string lastFingerprint = string.Empty;
     private string? lastMatchedRuleId;
     private string? lastCommandRuleId;
+    private string? pendingRuleId;
     private bool paused;
 
     public Plugin()
@@ -61,11 +65,11 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open Status Shift. /ss apply | pause | resume | now | config | zone",
+            HelpMessage = "Status Shift. /ss help",
         });
         CommandManager.AddHandler(CommandAlias, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Alias for /statusshift",
+            HelpMessage = "Alias for /statusshift. /ss help",
         });
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
@@ -101,6 +105,29 @@ public sealed class Plugin : IDalamudPlugin
     public StatusRule? CurrentRule() => engine.FindMatch();
     public string PreviewComment(StatusRule rule) => engine.ResolveComment(rule);
     public GameSnapshot Snapshot() => engine.Snapshot();
+    public string ExplainMatch() => engine.Explain();
+    public bool IsPaused => paused;
+    public string StatusLine()
+    {
+        if (paused)
+        {
+            if (pauseUntil is DateTime until)
+            {
+                var left = Math.Max(0, (int)Math.Ceiling((until - DateTime.Now).TotalSeconds));
+                return $"Paused {left}s";
+            }
+            return "Paused";
+        }
+        var mode = Configuration.ApplyMode == ApplyMode.Auto ? "Auto" : "Confirm";
+        var poll = Math.Max(3, Configuration.PollSeconds);
+        var next = Math.Max(0, poll - (int)(DateTime.Now - lastEval).TotalSeconds);
+        var coolLeft = Math.Max(0, Math.Max(10, Configuration.CooldownSeconds) - (int)(DateTime.Now - lastApply).TotalSeconds);
+        return lastApply == DateTime.MinValue
+            ? $"{mode} · check {next}s"
+            : $"{mode} · check {next}s · cool {coolLeft}s";
+    }
+
+    public void RequestEval() => lastEval = DateTime.MinValue;
 
     public string ExportRulesJson() => JsonSerializer.Serialize(Configuration.Rules, JsonOpts);
     public string ExportRuleJson(StatusRule rule) => JsonSerializer.Serialize(rule, JsonOpts);
@@ -166,7 +193,6 @@ public sealed class Plugin : IDalamudPlugin
             Notify("No matching rule.");
             return false;
         }
-
         var comment = rule.ChangeSearchComment ? engine.ResolveComment(rule) : string.Empty;
         return ApplyValues(rule, comment, force);
     }
@@ -186,7 +212,7 @@ public sealed class Plugin : IDalamudPlugin
             ok &= ChatSender.TrySendCommand(statusCmd);
 
         if (rule.HasCommand)
-            ok &= TrySendRuleCommand(rule, force);
+            ok &= TrySendRuleCommand(rule, force, allowSelf: true);
 
         if (ok)
         {
@@ -205,13 +231,22 @@ public sealed class Plugin : IDalamudPlugin
     private bool MaybeRerunCommand(StatusRule rule, bool force)
     {
         if (!rule.HasCommand) return false;
-        return TrySendRuleCommand(rule, force);
+        return TrySendRuleCommand(rule, force, allowSelf: false);
     }
 
-    private bool TrySendRuleCommand(StatusRule rule, bool force)
+    private bool TrySendRuleCommand(StatusRule rule, bool force, bool allowSelf)
     {
         var command = rule.Command.Trim();
         if (!command.StartsWith('/')) command = "/" + command;
+
+        if (IsSelfCommand(command, out var selfKey))
+        {
+            if (!allowSelf) return true;
+            if (selfKey is "apply" or "now")
+                return true;
+            Notify($"Ignored Status Shift command on [{rule.Name}].");
+            return true;
+        }
 
         var interval = rule.EffectiveCommandInterval(Configuration.PollSeconds);
         var first = lastCommandRuleId != rule.Id;
@@ -230,15 +265,62 @@ public sealed class Plugin : IDalamudPlugin
         return ok;
     }
 
+    private static bool IsSelfCommand(string command, out string key)
+    {
+        key = string.Empty;
+        var t = command.Trim();
+        if (!t.StartsWith("/ss", StringComparison.OrdinalIgnoreCase)
+            && !t.StartsWith("/statusshift", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var parts = t.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        key = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : string.Empty;
+        if (key.Contains(' ')) key = key.Split(' ')[0];
+        return true;
+    }
+
     private void OnCommand(string command, string args)
     {
-        var key = (args ?? string.Empty).Trim().ToLowerInvariant();
+        var raw = (args ?? string.Empty).Trim();
+        var parts = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var key = parts.Length == 0 ? string.Empty : parts[0].ToLowerInvariant();
         switch (key)
         {
+            case "help": PrintHelp(); break;
             case "config": ToggleConfigUi(); break;
             case "apply": TryApply(force: true); break;
-            case "pause": paused = true; Notify("Paused."); break;
-            case "resume": paused = false; Notify("Resumed."); Evaluate(forceNotice: true); break;
+            case "pause":
+            {
+                paused = true;
+                if (parts.Length > 1 && int.TryParse(parts[1], out var secs))
+                {
+                    if (secs <= 0) pauseUntil = null;
+                    else pauseUntil = DateTime.Now.AddSeconds(secs);
+                    Notify(secs <= 0 ? "Paused." : $"Paused {secs}s.");
+                }
+                else
+                {
+                    pauseUntil = null;
+                    Notify("Paused.");
+                }
+                break;
+            }
+            case "resume":
+                paused = false;
+                pauseUntil = null;
+                Notify("Resumed.");
+                Evaluate(forceNotice: true, fromEvent: true);
+                break;
+            case "auto":
+                Configuration.ApplyMode = ApplyMode.Auto;
+                Configuration.Save();
+                Notify("Apply mode: Auto");
+                Evaluate(forceNotice: true, fromEvent: true);
+                break;
+            case "confirm":
+                Configuration.ApplyMode = ApplyMode.Confirm;
+                Configuration.Save();
+                Notify("Apply mode: Confirm");
+                break;
             case "zone":
             {
                 var snap = Snapshot();
@@ -255,27 +337,76 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    private void OnTerritoryChanged(uint _) { lastEval = DateTime.MinValue; Evaluate(); }
+    private void PrintHelp()
+    {
+        Notify("/ss — open window");
+        Notify("/ss apply — apply current match now");
+        Notify("/ss now — preview match, do not apply");
+        Notify("/ss pause [seconds] — pause all rules; 120 = 2 min");
+        Notify("/ss resume — resume rules");
+        Notify("/ss auto | confirm — set apply mode");
+        Notify("/ss zone — print current place");
+        Notify("/ss config — settings");
+    }
+
+    private void OnTerritoryChanged(uint _) { lastEval = DateTime.MinValue; Evaluate(fromEvent: true); }
     private void OnLogin() => lastEval = DateTime.MinValue;
 
     private void OnFrameworkUpdate(IFramework _)
     {
+        if (paused && pauseUntil is DateTime until && DateTime.Now >= until)
+        {
+            paused = false;
+            pauseUntil = null;
+            Notify("Pause ended.");
+            Evaluate(fromEvent: true);
+            return;
+        }
+
         if (!Configuration.Enabled || paused || !ClientState.IsLoggedIn) return;
+
+        var snap = engine.Snapshot();
+        var changed = snap.Fingerprint != lastFingerprint;
+        if (changed)
+        {
+            lastFingerprint = snap.Fingerprint;
+            Evaluate(fromEvent: true);
+            return;
+        }
+
         var interval = Math.Max(3, Configuration.PollSeconds);
         if ((DateTime.Now - lastEval).TotalSeconds < interval) return;
         lastEval = DateTime.Now;
         Evaluate();
     }
 
-    private void Evaluate(bool forceNotice = false)
+    private void Evaluate(bool forceNotice = false, bool fromEvent = false)
     {
+        lastEval = DateTime.Now;
         var rule = engine.FindMatch();
+        var id = rule?.Id;
+        if (id != pendingRuleId)
+        {
+            pendingRuleId = id;
+            pendingSince = DateTime.Now;
+        }
+
         if (rule is null)
         {
             TryRevert();
             lastCommandRuleId = null;
             return;
         }
+
+        if (!fromEvent && Configuration.MinMatchSeconds > 0
+            && (DateTime.Now - pendingSince).TotalSeconds < Configuration.MinMatchSeconds
+            && lastMatchedRuleId != rule.Id)
+            return;
+
+        if (fromEvent && Configuration.MinMatchSeconds > 0
+            && (DateTime.Now - pendingSince).TotalSeconds < Configuration.MinMatchSeconds
+            && lastMatchedRuleId != rule.Id)
+            return;
 
         var comment = rule.ChangeSearchComment ? engine.ResolveComment(rule) : string.Empty;
         var command = rule.Command?.Trim() ?? string.Empty;
@@ -291,18 +422,20 @@ public sealed class Plugin : IDalamudPlugin
                 Notify($"Match [{rule.Name}] — /ss apply");
             lastMatchedRuleId = rule.Id;
             if (dueCommand && rule.HasCommand)
-                TrySendRuleCommand(rule, force: false);
+                TrySendRuleCommand(rule, force: false, allowSelf: false);
             return;
         }
 
-        if (changed && (DateTime.Now - lastApply).TotalSeconds < Math.Max(10, Configuration.CooldownSeconds))
+        var newWinner = lastAppliedStatus == OnlineStatusAction.LeaveAlone && lastMatchedRuleId != rule.Id || lastMatchedRuleId != rule.Id;
+        if (changed && !newWinner && (DateTime.Now - lastApply).TotalSeconds < Math.Max(5, Configuration.CooldownSeconds)
+            && lastApply != DateTime.MinValue)
         {
-            if (dueCommand) TrySendRuleCommand(rule, force: false);
+            if (dueCommand) TrySendRuleCommand(rule, force: false, allowSelf: false);
             return;
         }
 
         if (changed) TryApply(rule);
-        else if (dueCommand) TrySendRuleCommand(rule, force: false);
+        else if (dueCommand) TrySendRuleCommand(rule, force: false, allowSelf: false);
     }
 
     private void TryRevert()
@@ -311,8 +444,8 @@ public sealed class Plugin : IDalamudPlugin
         var previous = Configuration.Rules.Find(r => r.Id == lastMatchedRuleId);
         lastMatchedRuleId = null;
         if (previous is null || !previous.RevertWhenFalse) return;
-        if ((DateTime.Now - lastApply).TotalSeconds < Math.Max(10, Configuration.CooldownSeconds)
-            && Configuration.ApplyMode == ApplyMode.Auto)
+        if ((DateTime.Now - lastApply).TotalSeconds < Math.Max(5, Configuration.CooldownSeconds)
+            && Configuration.ApplyMode == ApplyMode.Auto && lastApply != DateTime.MinValue)
             return;
 
         lastAppliedComment = previous.FallbackComment;
