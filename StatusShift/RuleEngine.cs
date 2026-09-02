@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Lumina.Excel.Sheets;
 
 namespace StatusShift;
@@ -25,13 +26,13 @@ internal sealed class RuleEngine(Configuration config)
     {
         var snap = GameSnapshot.Capture();
         var time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-
         return rule.SearchComment
             .Replace("{zone}", snap.TerritoryName, StringComparison.OrdinalIgnoreCase)
             .Replace("{region}", snap.RegionName, StringComparison.OrdinalIgnoreCase)
             .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
             .Replace("{world}", snap.WorldName, StringComparison.OrdinalIgnoreCase)
             .Replace("{home}", snap.HomeWorldName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{instance}", snap.Instance.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -40,6 +41,9 @@ internal sealed class RuleEngine(Configuration config)
     private static bool Matches(StatusRule rule, GameSnapshot ctx)
     {
         if (!ScheduleMatches(rule, ctx.Now))
+            return false;
+
+        if (!WorldMatches(rule, ctx))
             return false;
 
         if (!LocationMatches(rule, ctx))
@@ -55,9 +59,7 @@ internal sealed class RuleEngine(Configuration config)
             }
         }
         else if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
-        {
             return false;
-        }
 
         if ((rule.JobIds.Count > 0 || rule.JobAbbrs.Count > 0)
             && !rule.JobIds.Contains(ctx.JobId)
@@ -73,38 +75,50 @@ internal sealed class RuleEngine(Configuration config)
         return true;
     }
 
+    private static bool WorldMatches(StatusRule rule, GameSnapshot ctx)
+    {
+        var filter = rule.WorldFilter?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(filter))
+            return true;
+        if (uint.TryParse(filter, out var id) && id == ctx.WorldId)
+            return true;
+        return ctx.WorldName.Contains(filter, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool LocationMatches(StatusRule rule, GameSnapshot ctx)
     {
         var loc = rule.Location ?? new LocationFilter();
         var value = loc.Value?.Trim() ?? string.Empty;
 
-        if (loc.Kind != LocationKind.Any && loc.Kind != LocationKind.Residence && string.IsNullOrWhiteSpace(value)
-            && rule.TerritoryIds.Count == 0 && rule.TerritoryNameContains.Count == 0)
-            return true;
+        if (loc.Instance is > 0 && loc.Instance.Value != ctx.Instance)
+            return false;
+
+        if (loc.Kind == LocationKind.World && !string.IsNullOrWhiteSpace(value))
+        {
+            if (!ctx.WorldName.Contains(value, StringComparison.OrdinalIgnoreCase)
+                && !(uint.TryParse(value, out var wid) && wid == ctx.WorldId))
+                return false;
+        }
 
         switch (loc.Kind)
         {
             case LocationKind.Any:
+            case LocationKind.World:
                 break;
             case LocationKind.TerritoryId:
                 if (!uint.TryParse(value, out var tid) || tid != ctx.TerritoryId)
                     return false;
                 break;
             case LocationKind.ZoneName:
-                if (!ctx.TerritoryName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrEmpty(value) || !ctx.TerritoryName.Contains(value, StringComparison.OrdinalIgnoreCase))
                     return false;
                 break;
             case LocationKind.Region:
-                if (!ctx.RegionName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrEmpty(value) || !ctx.RegionName.Contains(value, StringComparison.OrdinalIgnoreCase))
                     return false;
                 break;
             case LocationKind.ZoneGroup:
-                if (!ctx.ZoneGroupName.Contains(value, StringComparison.OrdinalIgnoreCase))
-                    return false;
-                break;
-            case LocationKind.World:
-                if (!ctx.WorldName.Contains(value, StringComparison.OrdinalIgnoreCase)
-                    && !(uint.TryParse(value, out var wid) && wid == ctx.WorldId))
+                if (string.IsNullOrEmpty(value) || !ctx.ZoneGroupName.Contains(value, StringComparison.OrdinalIgnoreCase))
                     return false;
                 break;
             case LocationKind.Residence:
@@ -128,7 +142,6 @@ internal sealed class RuleEngine(Configuration config)
     private static bool ScheduleMatches(StatusRule rule, DateTime now)
     {
         var sched = rule.Schedule ?? new RuleSchedule();
-
         if (sched.Mode == ScheduleMode.Always && (rule.Days.Count > 0 || rule.TimeStart is not null || rule.TimeEnd is not null))
             return LegacyTimeMatches(rule, now);
 
@@ -155,17 +168,14 @@ internal sealed class RuleEngine(Configuration config)
 
     private static bool DateMatches(RuleSchedule sched, DateTime today)
     {
-        if (DateTime.TryParse(sched.DateStart, out var start) && today < start.Date)
-            return false;
-        if (DateTime.TryParse(sched.DateEnd, out var end) && today > end.Date)
-            return false;
+        if (DateTime.TryParse(sched.DateStart, out var start) && today < start.Date) return false;
+        if (DateTime.TryParse(sched.DateEnd, out var end) && today > end.Date) return false;
         return true;
     }
 
     private static bool TimeMatches(RuleSchedule sched, TimeSpan now)
     {
-        if (sched.AllDay)
-            return true;
+        if (sched.AllDay) return true;
         var start = new TimeSpan(Clamp(sched.StartHour, 0, 23), Clamp(sched.StartMinute, 0, 59), 0);
         var end = new TimeSpan(Clamp(sched.EndHour, 0, 23), Clamp(sched.EndMinute, 0, 59), 0);
         return start <= end ? now >= start && now <= end : now >= start || now <= end;
@@ -173,8 +183,7 @@ internal sealed class RuleEngine(Configuration config)
 
     private static bool InTimeWindow(string? startText, string? endText, TimeSpan now)
     {
-        if (string.IsNullOrWhiteSpace(startText) && string.IsNullOrWhiteSpace(endText))
-            return true;
+        if (string.IsNullOrWhiteSpace(startText) && string.IsNullOrWhiteSpace(endText)) return true;
         if (!TryParseTime(startText, out var start)) start = TimeSpan.Zero;
         if (!TryParseTime(endText, out var end)) end = new TimeSpan(23, 59, 59);
         return start <= end ? now >= start && now <= end : now >= start || now <= end;
@@ -212,6 +221,8 @@ public sealed record GameSnapshot(
     string TerritoryName,
     string RegionName,
     string ZoneGroupName,
+    uint MapId,
+    uint Instance,
     uint JobId,
     string JobAbbr,
     uint WorldId,
@@ -235,13 +246,18 @@ public sealed record GameSnapshot(
         if (Plugin.Condition[ConditionFlag.Mounted]) flags.Add(ActivityFlag.Mounted);
         if (Plugin.Condition[ConditionFlag.InFlight]) flags.Add(ActivityFlag.Flying);
         if (Plugin.Condition[ConditionFlag.Swimming]) flags.Add(ActivityFlag.Swimming);
+        if (Plugin.Condition[ConditionFlag.Diving]) flags.Add(ActivityFlag.Diving);
         if (Plugin.Condition[ConditionFlag.WatchingCutscene] || Plugin.Condition[ConditionFlag.OccupiedInCutSceneEvent])
             flags.Add(ActivityFlag.WatchingCutscene);
         if (Plugin.Condition[ConditionFlag.Unconscious]) flags.Add(ActivityFlag.Dead);
+        if (Plugin.Condition[ConditionFlag.WaitingForDutyFinder] || Plugin.Condition[ConditionFlag.UsingPartyFinder])
+            flags.Add(ActivityFlag.WaitingForDutyFinder);
         if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
         if (Plugin.ClientState.IsPvP) flags.Add(ActivityFlag.PvP);
-        if (Plugin.Condition[ConditionFlag.Swimming] && Plugin.Condition[ConditionFlag.Mounted])
-            flags.Add(ActivityFlag.Diving);
+
+        var player = Plugin.ObjectTable.LocalPlayer;
+        if (player is not null && player.StatusFlags.HasFlag(StatusFlags.WeaponOut))
+            flags.Add(ActivityFlag.WeaponDrawn);
 
         var place = RuleEngine.ResolvePlace(Plugin.ClientState.TerritoryType);
         if (place.Housing) flags.Add(ActivityFlag.InResidence);
@@ -256,6 +272,8 @@ public sealed record GameSnapshot(
             place.Name,
             place.Region,
             place.Group,
+            Plugin.ClientState.MapId,
+            Plugin.ClientState.Instance,
             job.RowId,
             job.IsValid ? job.Value.Abbreviation.ToString() : "",
             world.RowId,
