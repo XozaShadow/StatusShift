@@ -93,6 +93,7 @@ public class LocationFilter
 {
     public LocationKind Kind { get; set; } = LocationKind.Any;
     public string Value { get; set; } = string.Empty;
+    public uint? Instance { get; set; }
 }
 
 [Serializable]
@@ -110,15 +111,18 @@ public class StatusRule
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; }
 
+    public bool ChangeSearchComment { get; set; }
     public string SearchComment { get; set; } = string.Empty;
     public OnlineStatusAction OnlineStatus { get; set; } = OnlineStatusAction.LeaveAlone;
     public bool RevertWhenFalse { get; set; }
     public OnlineStatusAction FallbackStatus { get; set; } = OnlineStatusAction.Online;
+    public bool ChangeFallbackComment { get; set; }
     public string FallbackComment { get; set; } = string.Empty;
 
     public RuleSchedule Schedule { get; set; } = new();
     public List<StateFilter> States { get; set; } = [];
     public LocationFilter Location { get; set; } = new();
+    public string WorldFilter { get; set; } = string.Empty;
 
     public List<ActivityFlag> Activities { get; set; } = [];
     public List<uint> TerritoryIds { get; set; } = [];
