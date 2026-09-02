@@ -5,18 +5,21 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
-using Lumina.Excel.Sheets;
 
 namespace StatusShift.Windows;
 
 public partial class MainWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
-    private string newRuleName = "New rule";
+    private string newRuleName = string.Empty;
     private string importMsg = string.Empty;
     private string jobSearch = string.Empty;
     private string worldSearch = string.Empty;
     private string zoneCustom = string.Empty;
+    private string selectedFolder = "All";
+    private string? selectedRuleId;
+    private string? contextRuleId;
+    private bool editorOpen;
 
     private static readonly DayOfWeek[] Week =
     [
@@ -40,13 +43,13 @@ public partial class MainWindow : Window, IDisposable
         ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
     ];
 
-    public MainWindow(Plugin plugin) : base("Status Shift v0.1.3###StatusShiftMain")
+    public MainWindow(Plugin plugin) : base("Status Shift v0.1.3.1###StatusShiftMain")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(560, 420),
-            MaximumSize = new Vector2(780, 1040),
+            MinimumSize = new Vector2(720, 460),
+            MaximumSize = new Vector2(1100, 1100),
         };
     }
 
@@ -56,12 +59,16 @@ public partial class MainWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
         var enabled = cfg.Enabled;
-        if (ImGui.Checkbox("Enabled", ref enabled)) { cfg.Enabled = enabled; cfg.Save(); }
+        if (ImGui.Checkbox("Enabled", ref enabled)) { cfg.Enabled = enabled; cfg.Save(); plugin.RequestEval(); }
         ImGui.SameLine();
         if (ImGui.Button("Update Now")) plugin.TryApply(force: true);
-        Hint("Re-check rules and apply the current match.");
+        Hint("Apply the current match now, ignoring Confirm.");
         ImGui.SameLine();
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
+        Hint("Apply mode, timers, skip-while, import.");
+        ImGui.SameLine();
+        ImGui.TextColored(UiTheme.Teal, plugin.StatusLine());
+        Hint("Auto applies on state change. Confirm only notifies. /ss pause 120 for a timed pause.");
 
         if (cfg.ShowSnapshot)
         {
@@ -74,20 +81,25 @@ public partial class MainWindow : Window, IDisposable
 
         var match = plugin.CurrentRule();
         ImGui.TextColored(UiTheme.Amber, match is null ? "Current match: none" : $"Current match: [{match.Name}] P{match.Priority}");
+        ImGui.TextDisabled(plugin.ExplainMatch());
 
         ImGui.Separator();
         ImGui.SetNextItemWidth(180);
-        ImGui.InputText("##newname", ref newRuleName, 64);
+        ImGui.InputTextWithHint("##newname", "New rule name", ref newRuleName, 64);
         ImGui.SameLine();
         if (ImGui.Button("Add rule"))
         {
             var nextPrio = cfg.Rules.Count == 0 ? 10 : cfg.Rules.Max(r => r.Priority) + 10;
-            cfg.Rules.Add(new StatusRule
+            var rule = new StatusRule
             {
                 Name = string.IsNullOrWhiteSpace(newRuleName) ? "New rule" : newRuleName.Trim(),
                 Priority = nextPrio,
                 Enabled = false,
-            });
+                Folder = selectedFolder is "All" or "Ungrouped" ? string.Empty : selectedFolder,
+            };
+            cfg.Rules.Add(rule);
+            selectedRuleId = rule.Id;
+            editorOpen = true;
             newRuleName = string.Empty;
             cfg.Save();
         }
@@ -102,33 +114,122 @@ public partial class MainWindow : Window, IDisposable
         if (!string.IsNullOrEmpty(importMsg))
             ImGui.TextDisabled(importMsg);
 
-        StatusRule? remove = null;
-        foreach (var rule in cfg.Rules.OrderByDescending(r => r.Priority).ToList())
+        var folders = cfg.Rules.Select(r => r.FolderKey).Where(f => f.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(f => f).ToList();
+        ImGui.BeginChild("folders", new Vector2(160, 260), true);
+        if (ImGui.Selectable("All", selectedFolder == "All")) selectedFolder = "All";
+        if (ImGui.Selectable("Ungrouped", selectedFolder == "Ungrouped")) selectedFolder = "Ungrouped";
+        foreach (var folder in folders)
         {
-            ImGui.PushID(rule.Id);
-            var row = ImGui.GetCursorPos();
-            UiDots.DrawEnabled(rule.Enabled, match?.Id == rule.Id);
-            ImGui.SetCursorPos(new Vector2(row.X + 18, row.Y));
-            if (ImGui.CollapsingHeader($"{HeaderLeft(rule)}###hdr{rule.Id}"))
-                DrawRule(cfg, rule, ref remove);
+            if (ImGui.Selectable(folder, selectedFolder.Equals(folder, StringComparison.OrdinalIgnoreCase)))
+                selectedFolder = folder;
+        }
+        ImGui.EndChild();
+        ImGui.SameLine();
+
+        StatusRule? remove = null;
+        var visible = cfg.Rules.Where(r => FolderVisible(r)).OrderByDescending(r => r.Priority).ToList();
+        ImGui.BeginChild("rulelist", new Vector2(0, 260), true);
+        if (ImGui.BeginTable("rules", 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.ScrollY))
+        {
+            ImGui.TableSetupColumn("On", ImGuiTableColumnFlags.WidthFixed, 36);
+            ImGui.TableSetupColumn("P", ImGuiTableColumnFlags.WidthFixed, 36);
+            ImGui.TableSetupColumn("Name");
+            ImGui.TableSetupColumn("Status");
+            ImGui.TableSetupColumn("Notes");
+            ImGui.TableSetupColumn("If");
+            ImGui.TableHeadersRow();
+            foreach (var rule in visible)
+            {
+                ImGui.PushID(rule.Id);
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+                var on = rule.Enabled;
+                if (ImGui.Checkbox("##on", ref on)) { rule.Enabled = on; cfg.Save(); plugin.RequestEval(); }
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(rule.Priority.ToString());
+                ImGui.TableNextColumn();
+                var label = rule.Name;
+                if (rule.HasCharacterFilter) label += $"  {rule.CharacterFilter.Trim()}";
+                var selected = selectedRuleId == rule.Id;
+                if (ImGui.Selectable(label, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
+                {
+                    selectedRuleId = rule.Id;
+                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                        editorOpen = true;
+                }
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+                {
+                    selectedRuleId = rule.Id;
+                    contextRuleId = rule.Id;
+                    ImGui.OpenPopup("rulectx");
+                }
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(rule.OnlineStatus == OnlineStatusAction.LeaveAlone ? "-" : ChatSender.StatusLabels[(int)rule.OnlineStatus]);
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled(rule.Notes);
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled(HeaderChips(rule));
+                DrawContext(cfg, rule, match, ref remove);
+                ImGui.PopID();
+            }
+            ImGui.EndTable();
+        }
+        ImGui.EndChild();
+
+        var selectedRule = cfg.Rules.Find(r => r.Id == selectedRuleId);
+        if (selectedRule is not null && editorOpen)
+        {
+            ImGui.Separator();
+            ImGui.TextColored(UiTheme.Amber, $"Edit  P{selectedRule.Priority}  {selectedRule.Name}");
+            ImGui.PushID(selectedRule.Id);
+            DrawRule(cfg, selectedRule, ref remove);
             ImGui.PopID();
         }
 
         if (remove is not null)
         {
             cfg.Rules.Remove(remove);
+            if (selectedRuleId == remove.Id) { selectedRuleId = null; editorOpen = false; }
             cfg.Save();
         }
     }
 
-    private static string HeaderLeft(StatusRule rule)
+    private void DrawContext(Configuration cfg, StatusRule rule, StatusRule? match, ref StatusRule? remove)
     {
-        var status = rule.OnlineStatus == OnlineStatusAction.LeaveAlone
-            ? "-"
-            : ChatSender.StatusLabels[(int)rule.OnlineStatus];
-        var cmd = rule.HasCommand ? $" [{rule.Command.Trim()}]" : string.Empty;
-        var glue = rule.Sticky ? " pin" : string.Empty;
-        return $"P{rule.Priority}  {rule.Name}  >  {status}{cmd}{glue}    {HeaderChips(rule)}";
+        if (!ImGui.BeginPopup("rulectx")) return;
+        if (ImGui.MenuItem(rule.Enabled ? "Turn off" : "Turn on"))
+        {
+            rule.Enabled = !rule.Enabled;
+            cfg.Save();
+            plugin.RequestEval();
+        }
+        if (ImGui.MenuItem(rule.Sticky ? "Unsticky" : "Sticky"))
+        {
+            rule.Sticky = !rule.Sticky;
+            cfg.Save();
+        }
+        if (ImGui.MenuItem("Edit")) editorOpen = true;
+        if (ImGui.MenuItem("Apply if matching") && match?.Id == rule.Id)
+            plugin.TryApply(rule, force: true);
+        if (ImGui.MenuItem("Copy rule"))
+        {
+            ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
+            importMsg = $"Copied {rule.Name}.";
+        }
+        var io = ImGui.GetIO();
+        if (io.KeyShift || io.KeyCtrl)
+        {
+            if (ImGui.MenuItem("Delete")) remove = rule;
+        }
+        else ImGui.MenuItem("Delete (hold Shift)", false);
+        ImGui.EndPopup();
+    }
+
+    private bool FolderVisible(StatusRule rule)
+    {
+        if (selectedFolder == "All") return true;
+        if (selectedFolder == "Ungrouped") return string.IsNullOrWhiteSpace(rule.Folder);
+        return rule.FolderKey.Equals(selectedFolder, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string HeaderChips(StatusRule rule)
@@ -148,6 +249,7 @@ public partial class MainWindow : Window, IDisposable
         var stateN = rule.States.Count(s => s.Op != MatchOp.Any);
         if (stateN == 1) parts.Add("St");
         else if (stateN > 1) parts.Add(rule.StateMatch == StateCombine.Any ? $"Stx{stateN}OR" : $"Stx{stateN}AND");
+        if (rule.HasCharacterFilter) parts.Add("Char");
         return string.Join("  ", parts);
     }
 
