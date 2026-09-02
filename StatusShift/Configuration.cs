@@ -7,13 +7,18 @@ namespace StatusShift;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
 
     public bool Enabled { get; set; } = true;
     public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
     public int CooldownSeconds { get; set; } = 45;
     public int PollSeconds { get; set; } = 10;
     public bool NotifyInChat { get; set; } = true;
+    public bool SkipWhileCutscene { get; set; } = true;
+    public bool SkipWhileDead { get; set; } = true;
+    public bool SkipWhileDuty { get; set; }
+    public bool OpenUiOnLoad { get; set; }
+    public bool ShowSnapshot { get; set; } = true;
     public List<StatusRule> Rules { get; set; } = DefaultRules();
 
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
@@ -24,15 +29,14 @@ public class Configuration : IPluginConfiguration
         {
             Name = "In duty",
             Priority = 100,
-            SearchComment = "In content — whispers after.",
             OnlineStatus = OnlineStatusAction.Busy,
             Activities = [ActivityFlag.InDuty],
+            States = [new StateFilter { Flag = ActivityFlag.InDuty, Op = MatchOp.Yes }],
         },
         new()
         {
             Name = "Venue hours",
             Priority = 50,
-            SearchComment = "Venue hours. Walk-ups welcome.",
             OnlineStatus = OnlineStatusAction.Roleplaying,
             Schedule = new RuleSchedule
             {
@@ -47,7 +51,7 @@ public class Configuration : IPluginConfiguration
         {
             Name = "Default",
             Priority = 0,
-            SearchComment = "Whispers welcome.",
+            OnlineStatus = OnlineStatusAction.Online,
         },
     ];
 }

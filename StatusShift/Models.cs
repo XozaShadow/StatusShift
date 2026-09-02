@@ -93,7 +93,12 @@ public class LocationFilter
 {
     public LocationKind Kind { get; set; } = LocationKind.Any;
     public string Value { get; set; } = string.Empty;
-    public uint? Instance { get; set; }
+    public ResidenceKind ResidenceKind { get; set; } = ResidenceKind.House;
+    public string District { get; set; } = string.Empty;
+    public int Ward { get; set; }
+    public int Plot { get; set; }
+    public int Apartment { get; set; }
+    public bool Subdivision { get; set; }
 }
 
 [Serializable]
@@ -114,7 +119,7 @@ public class StatusRule
     public bool ChangeSearchComment { get; set; }
     public string SearchComment { get; set; } = string.Empty;
     public OnlineStatusAction OnlineStatus { get; set; } = OnlineStatusAction.LeaveAlone;
-    public bool RevertWhenFalse { get; set; }
+    public bool RevertWhenFalse { get; set; } = true;
     public OnlineStatusAction FallbackStatus { get; set; } = OnlineStatusAction.Online;
     public bool ChangeFallbackComment { get; set; }
     public string FallbackComment { get; set; } = string.Empty;
@@ -134,4 +139,10 @@ public class StatusRule
     public bool? InDuty { get; set; }
     public string? TimeStart { get; set; }
     public string? TimeEnd { get; set; }
+
+    public bool Sticky
+    {
+        get => !RevertWhenFalse;
+        set => RevertWhenFalse = !value;
+    }
 }
