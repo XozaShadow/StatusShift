@@ -5,6 +5,8 @@ using System.Linq;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using Lumina.Excel.Sheets;
 
 namespace StatusShift;
@@ -55,17 +57,7 @@ internal sealed class RuleEngine(Configuration config)
             return false;
         if (!LocationMatches(rule, ctx))
             return false;
-
-        if (rule.States.Count > 0)
-        {
-            foreach (var filter in rule.States)
-            {
-                var present = ctx.Activities.Contains(filter.Flag);
-                if (filter.Op == MatchOp.Yes && !present) return false;
-                if (filter.Op == MatchOp.No && present) return false;
-            }
-        }
-        else if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
+        if (!StatesMatch(rule, ctx))
             return false;
 
         if ((rule.JobIds.Count > 0 || rule.JobAbbrs.Count > 0)
@@ -73,20 +65,57 @@ internal sealed class RuleEngine(Configuration config)
             && !rule.JobAbbrs.Any(a => a.Equals(ctx.JobAbbr, StringComparison.OrdinalIgnoreCase)))
             return false;
 
-        if (rule.WorldIds.Count > 0 && !rule.WorldIds.Contains(ctx.WorldId))
-            return false;
-
         return true;
+    }
+
+    private static bool StatesMatch(StatusRule rule, GameSnapshot ctx)
+    {
+        if (rule.States.Count == 0)
+        {
+            if (rule.Activities.Count > 0 && !rule.Activities.All(ctx.Activities.Contains))
+                return false;
+            return true;
+        }
+
+        var yes = rule.States.Where(s => s.Op == MatchOp.Yes).ToList();
+        var no = rule.States.Where(s => s.Op == MatchOp.No).ToList();
+
+        foreach (var filter in no)
+        {
+            if (ctx.Activities.Contains(filter.Flag))
+                return false;
+        }
+
+        if (yes.Count == 0)
+            return true;
+
+        if (rule.StateMatch == StateCombine.All)
+            return yes.All(s => ctx.Activities.Contains(s.Flag));
+        return yes.Any(s => ctx.Activities.Contains(s.Flag));
     }
 
     private static bool WorldMatches(StatusRule rule, GameSnapshot ctx)
     {
+        var hasIds = rule.WorldIds.Count > 0;
+        var hasNames = rule.WorldNames.Count > 0;
         var filter = rule.WorldFilter?.Trim() ?? string.Empty;
-        if (string.IsNullOrEmpty(filter))
+        if (!hasIds && !hasNames && string.IsNullOrEmpty(filter))
             return true;
-        if (uint.TryParse(filter, out var id) && id == ctx.WorldId)
+
+        if (hasIds && rule.WorldIds.Contains(ctx.WorldId))
             return true;
-        return ctx.WorldName.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        if (hasNames && rule.WorldNames.Any(n => ctx.WorldName.Equals(n, StringComparison.OrdinalIgnoreCase)
+                                                 || ctx.WorldName.Contains(n, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        if (!string.IsNullOrEmpty(filter))
+        {
+            if (uint.TryParse(filter, out var id) && id == ctx.WorldId)
+                return true;
+            if (ctx.WorldName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool LocationMatches(StatusRule rule, GameSnapshot ctx)
@@ -274,6 +303,7 @@ public sealed record GameSnapshot(
             flags.Add(ActivityFlag.WeaponDrawn);
 
         AddTargetFlags(flags, player);
+        AddLookFlags(flags, player);
 
         if (Plugin.PartyList.Length > 0 && player is not null)
         {
@@ -319,6 +349,29 @@ public sealed record GameSnapshot(
             housing,
             DateTime.Now,
             flags);
+    }
+
+    private static void AddLookFlags(HashSet<ActivityFlag> flags, IGameObject? player)
+    {
+        try
+        {
+            if (player is null) return;
+            unsafe
+            {
+                var ch = (Character*)player.Address;
+                if (!ch->DrawData.IsHatHidden)
+                    flags.Add(ActivityFlag.HelmShown);
+                if (!ch->DrawData.IsWeaponHidden)
+                    flags.Add(ActivityFlag.WeaponShown);
+                var control = Control.Instance();
+                if (control != null && control->IsWalking)
+                    flags.Add(ActivityFlag.Walking);
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Verbose(ex, "Look/walk flags failed");
+        }
     }
 
     private static void AddTargetFlags(HashSet<ActivityFlag> flags, IGameObject? player)
