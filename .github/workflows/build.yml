@@ -43,8 +43,13 @@ jobs:
           }
           $out = "artifacts/StatusShift"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item "$($dll.DirectoryName)\*" $out -Force
+          Copy-Item "$($dll.DirectoryName)\*" $out -Recurse -Force
+          New-Item -ItemType Directory -Force -Path "$out\images" | Out-Null
+          if (Test-Path "images\icon.png") {
+            Copy-Item "images\icon.png" "$out\images\icon.png" -Force
+          }
           if (-not (Test-Path "$out\StatusShift.dll")) { throw "Copy failed" }
+          if (-not (Test-Path "$out\images\icon.png")) { throw "images/icon.png missing from package" }
           Compress-Archive -Path "$out\*" -DestinationPath artifacts/StatusShift.zip -Force
           Write-Host "Packaged from $($dll.FullName)"
 

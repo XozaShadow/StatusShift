@@ -64,6 +64,9 @@ public enum ActivityFlag
     TargetingPlayer = 24,
     TargetingEnemy = 25,
     TargetedByPlayer = 26,
+    HelmShown = 27,
+    WeaponShown = 28,
+    Walking = 29,
 }
 
 public enum LocationKind
@@ -82,6 +85,12 @@ public enum MatchOp
     Any = 0,
     Yes = 1,
     No = 2,
+}
+
+public enum StateCombine
+{
+    Any = 0,
+    All = 1,
 }
 
 [Serializable]
@@ -123,7 +132,7 @@ public class StatusRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New rule";
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; }
     public int Priority { get; set; }
 
     public bool ChangeSearchComment { get; set; }
@@ -140,8 +149,10 @@ public class StatusRule
 
     public RuleSchedule Schedule { get; set; } = new();
     public List<StateFilter> States { get; set; } = [];
+    public StateCombine StateMatch { get; set; } = StateCombine.Any;
     public LocationFilter Location { get; set; } = new();
     public string WorldFilter { get; set; } = string.Empty;
+    public List<string> WorldNames { get; set; } = [];
 
     public List<ActivityFlag> Activities { get; set; } = [];
     public List<uint> TerritoryIds { get; set; } = [];
