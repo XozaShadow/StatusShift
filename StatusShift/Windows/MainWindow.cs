@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -26,10 +27,14 @@ public class MainWindow : Window, IDisposable
         ActivityFlag.Crafting, ActivityFlag.Gathering, ActivityFlag.Mounted,
         ActivityFlag.Flying, ActivityFlag.Swimming, ActivityFlag.Diving,
         ActivityFlag.WatchingCutscene, ActivityFlag.InDuty, ActivityFlag.WaitingForDutyFinder,
-        ActivityFlag.InParty, ActivityFlag.PvP, ActivityFlag.InResidence,
+        ActivityFlag.InParty, ActivityFlag.PartyLeader, ActivityFlag.PvP,
+        ActivityFlag.InResidence, ActivityFlag.Sitting, ActivityFlag.Casting,
+        ActivityFlag.Jumping, ActivityFlag.Occupied, ActivityFlag.Trading,
+        ActivityFlag.BetweenAreas, ActivityFlag.Roleplaying,
+        ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
     ];
 
-    public MainWindow(Plugin plugin) : base("Status Shift v0.1.0###StatusShiftMain")
+    public MainWindow(Plugin plugin) : base("Status Shift v0.1.1###StatusShiftMain")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
@@ -92,8 +97,10 @@ public class MainWindow : Window, IDisposable
         foreach (var rule in cfg.Rules.OrderByDescending(r => r.Priority).ToList())
         {
             ImGui.PushID(rule.Id);
-            var mark = rule.Enabled ? "●" : "○";
-            if (ImGui.CollapsingHeader($"{mark}  P{rule.Priority}  {rule.Name}###hdr{rule.Id}"))
+            var row = ImGui.GetCursorPos();
+            UiDots.DrawEnabled(rule.Enabled, match?.Id == rule.Id);
+            ImGui.SetCursorPos(new Vector2(row.X + 18, row.Y));
+            if (ImGui.CollapsingHeader($"P{rule.Priority}  {rule.Name}###hdr{rule.Id}"))
                 DrawRule(cfg, rule, ref remove);
             ImGui.PopID();
         }
@@ -156,6 +163,36 @@ public class MainWindow : Window, IDisposable
         {
             rule.OnlineStatus = (OnlineStatusAction)status;
             cfg.Save();
+        }
+        Hint("Leave alone = do not touch online status.");
+
+        var cmd = rule.Command ?? string.Empty;
+        if (ImGui.InputText("Command / macro", ref cmd, 192))
+        {
+            rule.Command = cmd;
+            cfg.Save();
+        }
+        Hint("Optional. Runs even if status is Leave alone. Example: /sit");
+        if (!string.IsNullOrWhiteSpace(rule.Command))
+        {
+            var rerun = rule.RerunCommand;
+            if (ImGui.Checkbox("Rerun every interval (s)", ref rerun))
+            {
+                rule.RerunCommand = rerun;
+                cfg.Save();
+            }
+            Hint("Off or 0 = run once when the rule starts matching. Blank interval uses Settings check interval.");
+            if (rule.RerunCommand)
+            {
+                var every = rule.CommandIntervalSeconds;
+                ImGui.SetNextItemWidth(80);
+                if (ImGui.InputInt("Interval s", ref every))
+                {
+                    rule.CommandIntervalSeconds = Math.Max(0, every);
+                    cfg.Save();
+                }
+                Hint("0 = use the Settings check interval.");
+            }
         }
 
         var change = rule.ChangeSearchComment;
@@ -405,6 +442,13 @@ public class MainWindow : Window, IDisposable
         ActivityFlag.WaitingForDutyFinder => "Duty Finder",
         ActivityFlag.WatchingCutscene => "Cutscene",
         ActivityFlag.InResidence => "In residence",
+        ActivityFlag.PartyLeader => "Party leader",
+        ActivityFlag.Sitting => "Sitting / emote",
+        ActivityFlag.BetweenAreas => "Between areas",
+        ActivityFlag.Roleplaying => "RP status on",
+        ActivityFlag.TargetingPlayer => "Targeting player",
+        ActivityFlag.TargetingEnemy => "Targeting NPC/enemy",
+        ActivityFlag.TargetedByPlayer => "Targeted by player",
         _ => flag.ToString(),
     };
 
@@ -424,18 +468,20 @@ public class MainWindow : Window, IDisposable
             var start = sched.DateStart ?? string.Empty;
             var end = sched.DateEnd ?? string.Empty;
             ImGui.SetNextItemWidth(110);
-            if (ImGui.InputText("Start date", ref start, 12))
+            if (ImGui.InputText("Start date", ref start, 16))
             {
                 sched.DateStart = string.IsNullOrWhiteSpace(start) ? null : start;
                 cfg.Save();
             }
+            Hint("YYYY-MM-DD  e.g. 2026-09-01");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(110);
-            if (ImGui.InputText("End date", ref end, 12))
+            if (ImGui.InputText("End date", ref end, 16))
             {
                 sched.DateEnd = string.IsNullOrWhiteSpace(end) ? null : end;
                 cfg.Save();
             }
+            Hint("YYYY-MM-DD. Blank end = no end.");
         }
 
         if (sched.Mode is ScheduleMode.Weekly or ScheduleMode.Custom)
@@ -459,20 +505,39 @@ public class MainWindow : Window, IDisposable
         if (ImGui.Checkbox("All Day", ref allDay)) { sched.AllDay = allDay; cfg.Save(); }
         if (sched.AllDay) return;
 
-        var sh = sched.StartHour;
-        var sm = sched.StartMinute;
-        var eh = sched.EndHour;
-        var em = sched.EndMinute;
-        ImGui.SetNextItemWidth(50);
-        if (ImGui.InputInt("Start h", ref sh)) { sched.StartHour = Math.Clamp(sh, 0, 23); cfg.Save(); }
+        var startText = $"{sched.StartHour:D2}:{sched.StartMinute:D2}";
+        var endText = $"{sched.EndHour:D2}:{sched.EndMinute:D2}";
+        ImGui.SetNextItemWidth(70);
+        if (ImGui.InputText("Start", ref startText, 6) && TryParseHm(startText, out var sh, out var sm))
+        {
+            sched.StartHour = sh;
+            sched.StartMinute = sm;
+            cfg.Save();
+        }
+        Hint("24-hour HH:mm  e.g. 00:00 or 20:30");
         ImGui.SameLine();
-        ImGui.SetNextItemWidth(50);
-        if (ImGui.InputInt("m##sm", ref sm)) { sched.StartMinute = Math.Clamp(sm, 0, 59); cfg.Save(); }
-        ImGui.SetNextItemWidth(50);
-        if (ImGui.InputInt("End h", ref eh)) { sched.EndHour = Math.Clamp(eh, 0, 23); cfg.Save(); }
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(50);
-        if (ImGui.InputInt("m##em", ref em)) { sched.EndMinute = Math.Clamp(em, 0, 59); cfg.Save(); }
+        ImGui.SetNextItemWidth(70);
+        if (ImGui.InputText("End", ref endText, 6) && TryParseHm(endText, out var eh, out var em))
+        {
+            sched.EndHour = eh;
+            sched.EndMinute = em;
+            cfg.Save();
+        }
+        Hint("24-hour HH:mm. End before start = overnight.");
+    }
+
+    private static bool TryParseHm(string text, out int hour, out int minute)
+    {
+        hour = 0;
+        minute = 0;
+        text = text.Trim();
+        if (TimeSpan.TryParseExact(text, ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out var span))
+        {
+            hour = Math.Clamp(span.Hours, 0, 23);
+            minute = Math.Clamp(span.Minutes, 0, 59);
+            return true;
+        }
+        return false;
     }
 
     private static void Hint(string text)
