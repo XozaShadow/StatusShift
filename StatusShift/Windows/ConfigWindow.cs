@@ -11,7 +11,7 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
-    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.1 Settings###StatusShiftConfig")
+    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.2 Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
         Size = new Vector2(520, 520);
@@ -24,7 +24,7 @@ public class ConfigWindow : Window, IDisposable
     {
         var cfg = plugin.Configuration;
 
-        ImGui.TextUnformatted("Apply");
+        ImGui.TextColored(UiTheme.Amber, "Apply");
         var mode = (int)cfg.ApplyMode;
         if (ImGui.Combo("Apply mode", ref mode, ["Confirm (notify only)", "Auto"], 2))
         {
@@ -47,13 +47,13 @@ public class ConfigWindow : Window, IDisposable
         }
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Skip checks while");
+        ImGui.TextColored(UiTheme.Teal, "Skip checks while");
         Toggle("Cutscene", () => cfg.SkipWhileCutscene, v => cfg.SkipWhileCutscene = v);
         Toggle("Dead", () => cfg.SkipWhileDead, v => cfg.SkipWhileDead = v);
         Toggle("In duty", () => cfg.SkipWhileDuty, v => cfg.SkipWhileDuty = v);
 
         ImGui.Separator();
-        ImGui.TextUnformatted("Display");
+        ImGui.TextColored(UiTheme.Teal, "Display");
         Toggle("Notify in chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v);
         Toggle("Show current location/job at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
         Toggle("Open main window on load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v);
