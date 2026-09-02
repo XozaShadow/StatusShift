@@ -11,7 +11,7 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
-    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.0 Settings###StatusShiftConfig")
+    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.1 Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
         Size = new Vector2(520, 520);

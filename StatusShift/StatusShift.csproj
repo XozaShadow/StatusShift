@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.1.0.0</Version>
+    <Version>0.1.1.0</Version>
     <Author>XozaShadow</Author>
     <Name>StatusShift</Name>
     <Punchline>Shift search comment and online status by zone, activity, and schedule.</Punchline>
-    <Description>Rules change your search comment and online status from zone, duty, activity, job, world, and UniFi-style schedules. Confirm mode by default.</Description>
+    <Description>Rules change your search comment, online status, and optional commands from zone, duty, activity, job, world, and schedule.</Description>
     <RepoUrl>https://github.com/XozaShadow/StatusShift</RepoUrl>
     <PackageProjectUrl>https://github.com/XozaShadow/StatusShift</PackageProjectUrl>
     <Tags>status;search;comment;roleplay;schedule;zone</Tags>
@@ -13,4 +13,7 @@
     <ApplicableVersion>any</ApplicableVersion>
     <DalamudApiLevel>15</DalamudApiLevel>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="..\images\icon.png" Link="images\icon.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\images\icon.png')" />
+  </ItemGroup>
 </Project>
