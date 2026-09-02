@@ -47,12 +47,17 @@ public class MainWindow : Window, IDisposable
         var enabled = cfg.Enabled;
         if (ImGui.Checkbox("Enabled", ref enabled)) { cfg.Enabled = enabled; cfg.Save(); }
         ImGui.SameLine();
-        if (ImGui.Button("Apply now")) plugin.TryApply(force: true);
+        if (ImGui.Button("Update Now")) plugin.TryApply(force: true);
+        Hint("Re-check rules and apply the current match.");
         ImGui.SameLine();
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
 
-        var snap = plugin.Snapshot();
-        ImGui.TextDisabled($"{snap.WorldName} · {snap.TerritoryName} · i{snap.Instance} · {snap.JobAbbr} ({snap.JobId})");
+        if (cfg.ShowSnapshot)
+        {
+            var snap = plugin.Snapshot();
+            ImGui.TextDisabled($"Location: {snap.WorldName} · {snap.TerritoryName} (id {snap.TerritoryId}) · {snap.Housing.Summary}");
+            ImGui.TextDisabled($"Job: {snap.JobAbbr}  ID {snap.JobId}");
+        }
 
         var match = plugin.CurrentRule();
         ImGui.Separator();
@@ -79,7 +84,7 @@ public class MainWindow : Window, IDisposable
                 ? "Imported from clipboard."
                 : err;
         }
-        Hint("Paste a rule copied with Copy rule. Does not replace your other rules.");
+        Hint("Paste a rule copied with Copy rule.");
         if (!string.IsNullOrEmpty(importMsg))
             ImGui.TextDisabled(importMsg);
 
@@ -87,7 +92,8 @@ public class MainWindow : Window, IDisposable
         foreach (var rule in cfg.Rules.OrderByDescending(r => r.Priority).ToList())
         {
             ImGui.PushID(rule.Id);
-            if (ImGui.CollapsingHeader($"P{rule.Priority}  {rule.Name}###hdr{rule.Id}"))
+            var mark = rule.Enabled ? "●" : "○";
+            if (ImGui.CollapsingHeader($"{mark}  P{rule.Priority}  {rule.Name}###hdr{rule.Id}"))
                 DrawRule(cfg, rule, ref remove);
             ImGui.PopID();
         }
@@ -119,7 +125,7 @@ public class MainWindow : Window, IDisposable
 
         if (ImGui.TreeNode("At schedule"))
         {
-            Hint("If you are outside this window, nothing else in this rule is checked.");
+            Hint("Outside this window, the rule is skipped.");
             DrawSchedule(cfg, rule);
             ImGui.TreePop();
         }
@@ -151,50 +157,52 @@ public class MainWindow : Window, IDisposable
             rule.OnlineStatus = (OnlineStatusAction)status;
             cfg.Save();
         }
-        Hint("Online status only. Search comment stays untouched unless you opt in below.");
 
         var change = rule.ChangeSearchComment;
         if (ImGui.Checkbox("Also change search comment", ref change))
         {
             rule.ChangeSearchComment = change;
-            if (!change) rule.SearchComment = string.Empty;
+            if (!change)
+            {
+                rule.SearchComment = string.Empty;
+                rule.ChangeFallbackComment = false;
+                rule.FallbackComment = string.Empty;
+            }
             cfg.Save();
         }
-        Hint("Off by default. Search comment is your character intro; leave this unchecked unless you really want it overwritten.");
+        Hint("Off by default. Your search comment is a character intro.");
         if (rule.ChangeSearchComment)
         {
             var comment = rule.SearchComment;
-            if (ImGui.InputText("Search comment", ref comment, 192)) { rule.SearchComment = comment; cfg.Save(); }
-            ImGui.TextDisabled("Tokens: {zone} {region} {job} {world} {home} {instance} {time}");
+            if (ImGui.InputText("While this rule matches", ref comment, 192)) { rule.SearchComment = comment; cfg.Save(); }
+            if (!rule.Sticky)
+            {
+                var fbc = rule.FallbackComment;
+                if (ImGui.InputText("When it no longer matches", ref fbc, 192))
+                {
+                    rule.FallbackComment = fbc;
+                    rule.ChangeFallbackComment = !string.IsNullOrWhiteSpace(fbc);
+                    cfg.Save();
+                }
+            }
+            ImGui.TextDisabled("Tokens: {zone} {region} {job} {world} {home} {ward} {plot} {time}");
         }
 
-        var revert = rule.RevertWhenFalse;
-        if (ImGui.Checkbox("Maintain while true; otherwise revert to", ref revert))
+        var sticky = rule.Sticky;
+        if (ImGui.Checkbox("Sticky (do not revert when the rule ends)", ref sticky))
         {
-            rule.RevertWhenFalse = revert;
+            rule.Sticky = sticky;
             cfg.Save();
         }
-        Hint("When this rule stops matching, apply the fallback status. Comment fallback is a separate opt-in.");
-        if (rule.RevertWhenFalse)
+        Hint("Off = always revert to the fallback status when this rule stops matching.");
+        if (!rule.Sticky)
         {
             var fb = (int)rule.FallbackStatus;
             ImGui.SetNextItemWidth(-1);
-            if (ImGui.Combo("Fallback status", ref fb, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
+            if (ImGui.Combo("Revert status", ref fb, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
             {
                 rule.FallbackStatus = (OnlineStatusAction)fb;
                 cfg.Save();
-            }
-            var fbComment = rule.ChangeFallbackComment;
-            if (ImGui.Checkbox("Also change search comment on revert", ref fbComment))
-            {
-                rule.ChangeFallbackComment = fbComment;
-                if (!fbComment) rule.FallbackComment = string.Empty;
-                cfg.Save();
-            }
-            if (rule.ChangeFallbackComment)
-            {
-                var fbc = rule.FallbackComment;
-                if (ImGui.InputText("Fallback comment", ref fbc, 192)) { rule.FallbackComment = fbc; cfg.Save(); }
             }
         }
 
@@ -203,42 +211,30 @@ public class MainWindow : Window, IDisposable
             ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
             importMsg = $"Copied {rule.Name}.";
         }
-        Hint("Copies this rule as JSON for Import rule or sharing.");
         ImGui.SameLine();
         var io = ImGui.GetIO();
         var canDelete = io.KeyShift || io.KeyCtrl;
         if (!canDelete) ImGui.BeginDisabled();
         if (ImGui.Button("Delete rule")) remove = rule;
         if (!canDelete) ImGui.EndDisabled();
-        Hint("Hold Shift or Ctrl, then click Delete.");
+        Hint("Hold Shift or Ctrl to delete.");
     }
 
     private void DrawLocation(Configuration cfg, StatusRule rule)
     {
-        var snap = plugin.Snapshot();
-        ImGui.TextWrapped($"Current: {snap.WorldName} (id {snap.WorldId}) · {snap.TerritoryName} (id {snap.TerritoryId}) · instance {snap.Instance} · map {snap.MapId} · {snap.RegionName} · residence {(snap.InResidence ? "yes" : "no")}");
-        Hint("Read-only snapshot. Cheap to show on the open card only.");
-
         var loc = rule.Location ??= new LocationFilter();
         var world = rule.WorldFilter ?? string.Empty;
         ImGui.SetNextItemWidth(160);
         if (ImGui.InputText("World", ref world, 32)) { rule.WorldFilter = world; cfg.Save(); }
         ImGui.SameLine();
-        if (ImGui.Button("Use world")) { rule.WorldFilter = snap.WorldName; cfg.Save(); }
-        Hint("Blank = any world. Can combine with the place filter below.");
-
-        var inst = (int)(loc.Instance ?? 0);
-        ImGui.SetNextItemWidth(80);
-        if (ImGui.InputInt("Instance #", ref inst))
+        if (ImGui.Button("Use world"))
         {
-            loc.Instance = inst <= 0 ? null : (uint)inst;
+            rule.WorldFilter = plugin.Snapshot().WorldName;
             cfg.Save();
         }
-        ImGui.SameLine();
-        if (ImGui.Button("Use instance")) { loc.Instance = snap.Instance == 0 ? null : snap.Instance; cfg.Save(); }
-        Hint("0 = any instance. Use the number from Current above when a zone is instanced.");
+        Hint("Blank = any world.");
 
-        var kindUi = loc.Kind == LocationKind.World ? 0 : loc.Kind == LocationKind.Residence ? 5 : (int)loc.Kind;
+        var kindUi = loc.Kind == LocationKind.Residence ? 5 : loc.Kind == LocationKind.World ? 0 : (int)loc.Kind;
         if (kindUi < 0 || kindUi > 5) kindUi = 0;
         if (ImGui.Combo("Place", ref kindUi, LocationKinds, LocationKinds.Length))
         {
@@ -266,7 +262,7 @@ public class MainWindow : Window, IDisposable
                 ImGui.SetNextItemWidth(120);
                 if (ImGui.InputText("Territory ID", ref value, 16)) { loc.Value = value; cfg.Save(); }
                 ImGui.SameLine();
-                if (ImGui.Button("Use place")) { loc.Value = snap.TerritoryId.ToString(); cfg.Save(); }
+                if (ImGui.Button("Use place")) { loc.Value = plugin.Snapshot().TerritoryId.ToString(); cfg.Save(); }
                 break;
             }
             case LocationKind.ZoneName:
@@ -275,7 +271,7 @@ public class MainWindow : Window, IDisposable
                 ImGui.SetNextItemWidth(180);
                 if (ImGui.InputText("Name contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
                 ImGui.SameLine();
-                if (ImGui.Button("Use place")) { loc.Value = snap.TerritoryName; cfg.Save(); }
+                if (ImGui.Button("Use place")) { loc.Value = plugin.Snapshot().TerritoryName; cfg.Save(); }
                 break;
             }
             case LocationKind.Region:
@@ -284,7 +280,7 @@ public class MainWindow : Window, IDisposable
                 ImGui.SetNextItemWidth(180);
                 if (ImGui.InputText("Region contains", ref value, 64)) { loc.Value = value; cfg.Save(); }
                 ImGui.SameLine();
-                if (ImGui.Button("Use place")) { loc.Value = snap.RegionName; cfg.Save(); }
+                if (ImGui.Button("Use place")) { loc.Value = plugin.Snapshot().RegionName; cfg.Save(); }
                 break;
             }
             case LocationKind.ZoneGroup:
@@ -293,33 +289,69 @@ public class MainWindow : Window, IDisposable
                 ImGui.SetNextItemWidth(180);
                 if (ImGui.InputText("Zone group", ref value, 64)) { loc.Value = value; cfg.Save(); }
                 ImGui.SameLine();
-                if (ImGui.Button("Use place")) { loc.Value = snap.ZoneGroupName; cfg.Save(); }
+                if (ImGui.Button("Use place")) { loc.Value = plugin.Snapshot().ZoneGroupName; cfg.Save(); }
                 break;
             }
             case LocationKind.Residence:
-                ImGui.TextWrapped("Housing wards, apartments, chambers, cottages, houses, mansions.");
-                var filter = loc.Value;
-                if (ImGui.InputText("Optional name filter", ref filter, 64)) { loc.Value = filter; cfg.Save(); }
+                DrawResidence(cfg, loc);
                 break;
         }
+    }
+
+    private void DrawResidence(Configuration cfg, LocationFilter loc)
+    {
+        var here = plugin.Snapshot().Housing;
+        ImGui.TextDisabled($"Current residence: {here.Summary}");
+
+        var kind = loc.ResidenceKind == ResidenceKind.Apartment ? 1 : 0;
+        if (ImGui.Combo("Type", ref kind, ["House", "Apartment"], 2))
+        {
+            loc.ResidenceKind = kind == 1 ? ResidenceKind.Apartment : ResidenceKind.House;
+            cfg.Save();
+        }
+
+        var district = loc.District ?? string.Empty;
+        ImGui.SetNextItemWidth(180);
+        if (ImGui.InputText("Zone / district", ref district, 48)) { loc.District = district; cfg.Save(); }
+
+        var ward = loc.Ward;
+        ImGui.SetNextItemWidth(70);
+        if (ImGui.InputInt("Ward", ref ward)) { loc.Ward = Math.Clamp(ward, 0, 30); cfg.Save(); }
+
+        var sub = loc.Subdivision;
+        if (ImGui.Checkbox("Subdivision", ref sub)) { loc.Subdivision = sub; cfg.Save(); }
+
+        if (loc.ResidenceKind == ResidenceKind.House)
+        {
+            var plot = loc.Plot;
+            ImGui.SetNextItemWidth(70);
+            if (ImGui.InputInt("Plot", ref plot)) { loc.Plot = Math.Clamp(plot, 0, 60); cfg.Save(); }
+        }
+        else
+        {
+            var apt = loc.Apartment;
+            ImGui.SetNextItemWidth(70);
+            if (ImGui.InputInt("Apartment #", ref apt)) { loc.Apartment = Math.Max(0, apt); cfg.Save(); }
+        }
+
+        if (ImGui.Button("Use current residence"))
+        {
+            loc.District = here.District;
+            loc.Ward = here.Ward;
+            loc.Plot = here.Plot;
+            loc.Apartment = here.Apartment;
+            loc.Subdivision = here.Subdivision;
+            loc.ResidenceKind = here.Kind == ResidenceKind.Apartment ? ResidenceKind.Apartment : ResidenceKind.House;
+            cfg.Save();
+        }
+        Hint("0 ward/plot/apt = any. Subdivision checked = only subdivision.");
     }
 
     private void DrawJob(Configuration cfg, StatusRule rule)
     {
         var snap = plugin.Snapshot();
-        ImGui.TextDisabled($"Current: {snap.JobAbbr}  ID {snap.JobId}");
-        Hint("Empty fields = any job. ID or abbreviation may match.");
-
         if (ImGui.BeginTable("jobrow", 2, ImGuiTableFlags.SizingStretchProp))
         {
-            ImGui.TableNextColumn();
-            var ids = string.Join(",", rule.JobIds);
-            if (ImGui.InputText("IDs", ref ids, 48))
-            {
-                rule.JobIds = ids.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => uint.TryParse(s, out var n) ? n : 0).Where(n => n != 0).ToList();
-                cfg.Save();
-            }
             ImGui.TableNextColumn();
             var abbrs = string.Join(",", rule.JobAbbrs);
             if (ImGui.InputText("Abbr", ref abbrs, 48))
@@ -328,13 +360,21 @@ public class MainWindow : Window, IDisposable
                     .Select(s => s.ToUpperInvariant()).ToList();
                 cfg.Save();
             }
+            ImGui.TableNextColumn();
+            var ids = string.Join(",", rule.JobIds);
+            if (ImGui.InputText("IDs", ref ids, 48))
+            {
+                rule.JobIds = ids.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => uint.TryParse(s, out var n) ? n : 0).Where(n => n != 0).ToList();
+                cfg.Save();
+            }
             ImGui.EndTable();
         }
         if (ImGui.Button("Add current job"))
         {
-            if (snap.JobId != 0 && !rule.JobIds.Contains(snap.JobId)) rule.JobIds.Add(snap.JobId);
             if (!string.IsNullOrEmpty(snap.JobAbbr) && !rule.JobAbbrs.Contains(snap.JobAbbr, StringComparer.OrdinalIgnoreCase))
                 rule.JobAbbrs.Add(snap.JobAbbr);
+            if (snap.JobId != 0 && !rule.JobIds.Contains(snap.JobId)) rule.JobIds.Add(snap.JobId);
             cfg.Save();
         }
     }
@@ -415,7 +455,6 @@ public class MainWindow : Window, IDisposable
         }
 
         if (sched.Mode == ScheduleMode.Always) return;
-
         var allDay = sched.AllDay;
         if (ImGui.Checkbox("All Day", ref allDay)) { sched.AllDay = allDay; cfg.Save(); }
         if (sched.AllDay) return;
