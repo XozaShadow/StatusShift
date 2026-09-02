@@ -16,6 +16,13 @@ internal sealed class RuleEngine(Configuration config)
             return null;
 
         var ctx = Snapshot();
+        if (config.SkipWhileCutscene && ctx.Activities.Contains(ActivityFlag.WatchingCutscene))
+            return null;
+        if (config.SkipWhileDead && ctx.Activities.Contains(ActivityFlag.Dead))
+            return null;
+        if (config.SkipWhileDuty && ctx.Activities.Contains(ActivityFlag.InDuty))
+            return null;
+
         return config.Rules
             .Where(r => r.Enabled)
             .OrderByDescending(r => r.Priority)
@@ -32,7 +39,8 @@ internal sealed class RuleEngine(Configuration config)
             .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
             .Replace("{world}", snap.WorldName, StringComparison.OrdinalIgnoreCase)
             .Replace("{home}", snap.HomeWorldName, StringComparison.OrdinalIgnoreCase)
-            .Replace("{instance}", snap.Instance.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{ward}", snap.Housing.Ward.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{plot}", snap.Housing.Plot.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -42,10 +50,8 @@ internal sealed class RuleEngine(Configuration config)
     {
         if (!ScheduleMatches(rule, ctx.Now))
             return false;
-
         if (!WorldMatches(rule, ctx))
             return false;
-
         if (!LocationMatches(rule, ctx))
             return false;
 
@@ -69,9 +75,6 @@ internal sealed class RuleEngine(Configuration config)
         if (rule.WorldIds.Count > 0 && !rule.WorldIds.Contains(ctx.WorldId))
             return false;
 
-        if (rule.InDuty == true && !ctx.Activities.Contains(ActivityFlag.InDuty))
-            return false;
-
         return true;
     }
 
@@ -89,16 +92,6 @@ internal sealed class RuleEngine(Configuration config)
     {
         var loc = rule.Location ?? new LocationFilter();
         var value = loc.Value?.Trim() ?? string.Empty;
-
-        if (loc.Instance is > 0 && loc.Instance.Value != ctx.Instance)
-            return false;
-
-        if (loc.Kind == LocationKind.World && !string.IsNullOrWhiteSpace(value))
-        {
-            if (!ctx.WorldName.Contains(value, StringComparison.OrdinalIgnoreCase)
-                && !(uint.TryParse(value, out var wid) && wid == ctx.WorldId))
-                return false;
-        }
 
         switch (loc.Kind)
         {
@@ -122,9 +115,7 @@ internal sealed class RuleEngine(Configuration config)
                     return false;
                 break;
             case LocationKind.Residence:
-                if (!ctx.InResidence) return false;
-                if (!string.IsNullOrWhiteSpace(value)
-                    && !ctx.TerritoryName.Contains(value, StringComparison.OrdinalIgnoreCase))
+                if (!ResidenceMatches(loc, ctx.Housing))
                     return false;
                 break;
         }
@@ -136,6 +127,26 @@ internal sealed class RuleEngine(Configuration config)
             !rule.TerritoryNameContains.Any(n => ctx.TerritoryName.Contains(n, StringComparison.OrdinalIgnoreCase)))
             return false;
 
+        return true;
+    }
+
+    private static bool ResidenceMatches(LocationFilter loc, HousingAddress here)
+    {
+        if (here.Kind == ResidenceKind.None || here.Ward <= 0)
+            return false;
+        if (loc.ResidenceKind != ResidenceKind.None && loc.ResidenceKind != here.Kind)
+            return false;
+        if (!string.IsNullOrWhiteSpace(loc.District)
+            && !here.District.Contains(loc.District, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (loc.Ward > 0 && loc.Ward != here.Ward)
+            return false;
+        if (loc.ResidenceKind == ResidenceKind.House && loc.Plot > 0 && loc.Plot != here.Plot)
+            return false;
+        if (loc.ResidenceKind == ResidenceKind.Apartment && loc.Apartment > 0 && loc.Apartment != here.Apartment)
+            return false;
+        if (loc.Subdivision && !here.Subdivision)
+            return false;
         return true;
     }
 
@@ -194,25 +205,17 @@ internal sealed class RuleEngine(Configuration config)
 
     private static int Clamp(int value, int min, int max) => Math.Min(max, Math.Max(min, value));
 
-    internal static (string Name, string Region, string Group, bool Housing) ResolvePlace(uint territoryId)
+    internal static (string Name, string Region, string Group) ResolvePlace(uint territoryId)
     {
         var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
         var row = sheet?.GetRowOrDefault(territoryId);
         if (row is null)
-            return (territoryId.ToString(), string.Empty, string.Empty, false);
+            return (territoryId.ToString(), string.Empty, string.Empty);
 
-        var name = row.Value.PlaceName.Value.Name.ToString();
-        var region = row.Value.PlaceNameRegion.Value.Name.ToString();
-        var group = row.Value.PlaceNameZone.Value.Name.ToString();
-        var housing = name.Contains("Ward", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("Apartment", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("Cottage", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("House", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("Mansion", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("Chambers", StringComparison.OrdinalIgnoreCase)
-                      || name.Contains("Plot", StringComparison.OrdinalIgnoreCase)
-                      || region.Contains("Residential", StringComparison.OrdinalIgnoreCase);
-        return (name, region, group, housing);
+        return (
+            row.Value.PlaceName.Value.Name.ToString(),
+            row.Value.PlaceNameRegion.Value.Name.ToString(),
+            row.Value.PlaceNameZone.Value.Name.ToString());
     }
 }
 
@@ -221,17 +224,17 @@ public sealed record GameSnapshot(
     string TerritoryName,
     string RegionName,
     string ZoneGroupName,
-    uint MapId,
-    uint Instance,
     uint JobId,
     string JobAbbr,
     uint WorldId,
     string WorldName,
     string HomeWorldName,
-    bool InResidence,
+    HousingAddress Housing,
     DateTime Now,
     HashSet<ActivityFlag> Activities)
 {
+    public bool InResidence => Housing.Kind != ResidenceKind.None;
+
     public static GameSnapshot Capture()
     {
         var flags = new HashSet<ActivityFlag>();
@@ -260,7 +263,9 @@ public sealed record GameSnapshot(
             flags.Add(ActivityFlag.WeaponDrawn);
 
         var place = RuleEngine.ResolvePlace(Plugin.ClientState.TerritoryType);
-        if (place.Housing) flags.Add(ActivityFlag.InResidence);
+        var housing = Housing.Read(place.Name);
+        if (housing.Kind != ResidenceKind.None)
+            flags.Add(ActivityFlag.InResidence);
 
         var ps = Plugin.PlayerState;
         var job = ps.IsLoaded ? ps.ClassJob : default;
@@ -272,14 +277,12 @@ public sealed record GameSnapshot(
             place.Name,
             place.Region,
             place.Group,
-            Plugin.ClientState.MapId,
-            Plugin.ClientState.Instance,
             job.RowId,
             job.IsValid ? job.Value.Abbreviation.ToString() : "",
             world.RowId,
             world.IsValid ? world.Value.Name.ToString() : "",
             home.IsValid ? home.Value.Name.ToString() : "",
-            place.Housing,
+            housing,
             DateTime.Now,
             flags);
     }
