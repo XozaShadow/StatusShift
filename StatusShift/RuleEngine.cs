@@ -279,7 +279,6 @@ public sealed record GameSnapshot(
         {
             try
             {
-                var leader = Plugin.PartyList[0];
                 for (var i = 0; i < Plugin.PartyList.Length; i++)
                 {
                     var member = Plugin.PartyList[i];
@@ -290,7 +289,6 @@ public sealed record GameSnapshot(
                         break;
                     }
                 }
-                _ = leader;
             }
             catch (Exception ex)
             {
@@ -330,19 +328,20 @@ public sealed record GameSnapshot(
             var target = Plugin.TargetManager.Target ?? Plugin.TargetManager.SoftTarget;
             if (target is not null && player is not null && target.EntityId != player.EntityId)
             {
-                if (target.ObjectKind == ObjectKind.Player)
+                if (target.ObjectKind == ObjectKind.Pc)
                     flags.Add(ActivityFlag.TargetingPlayer);
                 else if (target.ObjectKind is ObjectKind.BattleNpc or ObjectKind.EventNpc)
                     flags.Add(ActivityFlag.TargetingEnemy);
             }
 
             if (player is null) return;
-            var me = player.EntityId;
+            var meEntity = player.EntityId;
+            var meObject = player.GameObjectId;
             foreach (var obj in Plugin.ObjectTable)
             {
-                if (obj is null || obj.EntityId == me) continue;
-                if (obj.ObjectKind != ObjectKind.Player) continue;
-                if (obj.TargetObjectId == me || obj.TargetObject?.EntityId == me)
+                if (obj is null || obj.EntityId == meEntity) continue;
+                if (obj.ObjectKind != ObjectKind.Pc) continue;
+                if (obj.TargetObjectId == meObject || obj.TargetObject?.EntityId == meEntity)
                 {
                     flags.Add(ActivityFlag.TargetedByPlayer);
                     break;
