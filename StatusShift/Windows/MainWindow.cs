@@ -9,7 +9,7 @@ using Lumina.Excel.Sheets;
 
 namespace StatusShift.Windows;
 
-public class MainWindow : Window, IDisposable
+public partial class MainWindow : Window, IDisposable
 {
     private readonly Plugin plugin;
     private string newRuleName = "New rule";
@@ -120,3 +120,56 @@ public class MainWindow : Window, IDisposable
             cfg.Save();
         }
     }
+
+    private static string HeaderLeft(StatusRule rule)
+    {
+        var status = rule.OnlineStatus == OnlineStatusAction.LeaveAlone
+            ? "-"
+            : ChatSender.StatusLabels[(int)rule.OnlineStatus];
+        var cmd = rule.HasCommand ? $" [{rule.Command.Trim()}]" : string.Empty;
+        var glue = rule.Sticky ? " pin" : string.Empty;
+        return $"P{rule.Priority}  {rule.Name}  >  {status}{cmd}{glue}    {HeaderChips(rule)}";
+    }
+
+    private static string HeaderChips(StatusRule rule)
+    {
+        var parts = new List<string>();
+        var sched = rule.Schedule ?? new RuleSchedule();
+        if (sched.Mode != ScheduleMode.Always) parts.Add("Schd");
+        var loc = rule.Location ?? new LocationFilter();
+        if ((loc.Kind != LocationKind.Any && loc.Kind != LocationKind.World)
+            || !string.IsNullOrWhiteSpace(rule.WorldFilter)
+            || rule.WorldNames.Count > 0
+            || rule.WorldIds.Count > 0
+            || rule.TerritoryIds.Count > 0
+            || rule.TerritoryNameContains.Count > 0)
+            parts.Add("Loc");
+        if (rule.JobIds.Count > 0 || rule.JobAbbrs.Count > 0) parts.Add("Job");
+        var stateN = rule.States.Count(s => s.Op != MatchOp.Any);
+        if (stateN == 1) parts.Add("St");
+        else if (stateN > 1) parts.Add(rule.StateMatch == StateCombine.Any ? $"Stx{stateN}OR" : $"Stx{stateN}AND");
+        return string.Join("  ", parts);
+    }
+
+    private static bool TryParseHm(string text, out int hour, out int minute)
+    {
+        hour = 0;
+        minute = 0;
+        text = text.Trim();
+        if (TimeSpan.TryParseExact(text, ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out var span))
+        {
+            hour = Math.Clamp(span.Hours, 0, 23);
+            minute = Math.Clamp(span.Minutes, 0, 59);
+            return true;
+        }
+        return false;
+    }
+
+    private static void Hint(string text)
+    {
+        ImGui.SameLine();
+        ImGui.TextDisabled("(i)");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(text);
+    }
+}
