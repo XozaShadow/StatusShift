@@ -51,6 +51,7 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        RuleStore.Load(Configuration);
         engine = new RuleEngine(Configuration);
 
         configWindow = new ConfigWindow(this);
@@ -81,6 +82,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        try { RuleStore.Save(Configuration); } catch { /* ignore */ }
         Framework.Update -= OnFrameworkUpdate;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         ClientState.Login -= OnLogin;
