@@ -25,7 +25,7 @@ public sealed record GameSnapshot(
     public bool InResidence => Housing.Kind != ResidenceKind.None;
 
     public string Fingerprint =>
-        $"{TerritoryId}|{JobId}|{WorldId}|{Housing.Summary}|{string.Join(',', Activities.Order())}";
+        $"{TerritoryId}|{JobId}|{WorldId}|{Housing.Summary}|{Activities.Count}:{string.Join(',', Activities)}";
 
     public static GameSnapshot Capture()
     {
