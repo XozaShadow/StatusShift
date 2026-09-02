@@ -7,7 +7,7 @@ namespace StatusShift;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
 
     public bool Enabled { get; set; } = true;
     public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
@@ -28,6 +28,7 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "In duty",
+            Enabled = true,
             Priority = 100,
             OnlineStatus = OnlineStatusAction.Busy,
             Activities = [ActivityFlag.InDuty],
@@ -36,6 +37,7 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "Venue hours",
+            Enabled = true,
             Priority = 50,
             OnlineStatus = OnlineStatusAction.Roleplaying,
             Schedule = new RuleSchedule
@@ -50,6 +52,7 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "Default",
+            Enabled = true,
             Priority = 0,
             OnlineStatus = OnlineStatusAction.Online,
         },
