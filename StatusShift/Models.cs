@@ -132,6 +132,9 @@ public class StatusRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New rule";
+    public string Notes { get; set; } = string.Empty;
+    public string Folder { get; set; } = string.Empty;
+    public string CharacterFilter { get; set; } = string.Empty;
     public bool Enabled { get; set; }
     public int Priority { get; set; }
 
@@ -172,10 +175,29 @@ public class StatusRule
     }
 
     public bool HasCommand => !string.IsNullOrWhiteSpace(Command);
+    public bool HasCharacterFilter => !string.IsNullOrWhiteSpace(CharacterFilter);
+    public string FolderKey => string.IsNullOrWhiteSpace(Folder) ? string.Empty : Folder.Trim();
 
     public int EffectiveCommandInterval(int pollSeconds)
     {
         if (!RerunCommand) return 0;
         return CommandIntervalSeconds > 0 ? CommandIntervalSeconds : Math.Max(3, pollSeconds);
+    }
+
+    public static bool MatchesCharacter(string filter, string characterName, string worldName)
+    {
+        filter = (filter ?? string.Empty).Trim();
+        if (filter.Length == 0) return true;
+        var at = filter.IndexOf('@');
+        if (at < 0)
+            return characterName.Equals(filter, StringComparison.OrdinalIgnoreCase);
+
+        var name = filter[..at].Trim();
+        var world = filter[(at + 1)..].Trim();
+        if (!string.IsNullOrEmpty(name) && !characterName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!string.IsNullOrEmpty(world) && !worldName.Equals(world, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return !string.IsNullOrEmpty(name) || !string.IsNullOrEmpty(world);
     }
 }
