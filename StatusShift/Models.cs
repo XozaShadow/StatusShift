@@ -54,6 +54,16 @@ public enum ActivityFlag
     PvP = 14,
     PartyLeader = 15,
     InResidence = 16,
+    Sitting = 17,
+    Casting = 18,
+    Jumping = 19,
+    Occupied = 20,
+    Trading = 21,
+    BetweenAreas = 22,
+    Roleplaying = 23,
+    TargetingPlayer = 24,
+    TargetingEnemy = 25,
+    TargetedByPlayer = 26,
 }
 
 public enum LocationKind
@@ -124,6 +134,10 @@ public class StatusRule
     public bool ChangeFallbackComment { get; set; }
     public string FallbackComment { get; set; } = string.Empty;
 
+    public string Command { get; set; } = string.Empty;
+    public bool RerunCommand { get; set; }
+    public int CommandIntervalSeconds { get; set; }
+
     public RuleSchedule Schedule { get; set; } = new();
     public List<StateFilter> States { get; set; } = [];
     public LocationFilter Location { get; set; } = new();
@@ -144,5 +158,13 @@ public class StatusRule
     {
         get => !RevertWhenFalse;
         set => RevertWhenFalse = !value;
+    }
+
+    public bool HasCommand => !string.IsNullOrWhiteSpace(Command);
+
+    public int EffectiveCommandInterval(int pollSeconds)
+    {
+        if (!RerunCommand) return 0;
+        return CommandIntervalSeconds > 0 ? CommandIntervalSeconds : Math.Max(3, pollSeconds);
     }
 }

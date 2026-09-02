@@ -28,7 +28,7 @@ public readonly record struct HousingAddress(
     };
 }
 
-internal static class Housing
+internal static class HousingReader
 {
     public static HousingAddress Read(string territoryName)
     {
