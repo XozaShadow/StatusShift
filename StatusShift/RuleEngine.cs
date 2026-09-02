@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
 using Lumina.Excel.Sheets;
 
 namespace StatusShift;
@@ -257,13 +258,48 @@ public sealed record GameSnapshot(
             flags.Add(ActivityFlag.WaitingForDutyFinder);
         if (Plugin.PartyList.Length > 0) flags.Add(ActivityFlag.InParty);
         if (Plugin.ClientState.IsPvP) flags.Add(ActivityFlag.PvP);
+        if (Plugin.Condition[ConditionFlag.Casting]) flags.Add(ActivityFlag.Casting);
+        if (Plugin.Condition[ConditionFlag.Jumping]) flags.Add(ActivityFlag.Jumping);
+        if (Plugin.Condition[ConditionFlag.Occupied] || Plugin.Condition[ConditionFlag.OccupiedInEvent] || Plugin.Condition[ConditionFlag.OccupiedInQuestEvent])
+            flags.Add(ActivityFlag.Occupied);
+        if (Plugin.Condition[ConditionFlag.Occupied30] || Plugin.Condition[ConditionFlag.Occupied38] || Plugin.Condition[ConditionFlag.Occupied39])
+            flags.Add(ActivityFlag.Sitting);
+        if (Plugin.Condition[ConditionFlag.TradeOpen]) flags.Add(ActivityFlag.Trading);
+        if (Plugin.Condition[ConditionFlag.BetweenAreas] || Plugin.Condition[ConditionFlag.BetweenAreas51])
+            flags.Add(ActivityFlag.BetweenAreas);
+        if (Plugin.Condition[ConditionFlag.RolePlaying]) flags.Add(ActivityFlag.Roleplaying);
 
         var player = Plugin.ObjectTable.LocalPlayer;
         if (player is not null && player.StatusFlags.HasFlag(StatusFlags.WeaponOut))
             flags.Add(ActivityFlag.WeaponDrawn);
 
+        AddTargetFlags(flags, player);
+
+        if (Plugin.PartyList.Length > 0 && player is not null)
+        {
+            try
+            {
+                var leader = Plugin.PartyList[0];
+                for (var i = 0; i < Plugin.PartyList.Length; i++)
+                {
+                    var member = Plugin.PartyList[i];
+                    if (member is null) continue;
+                    if (string.Equals(member.Name.TextValue, player.Name.TextValue, StringComparison.Ordinal))
+                    {
+                        if (i == 0) flags.Add(ActivityFlag.PartyLeader);
+                        break;
+                    }
+                }
+                _ = leader;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Verbose(ex, "Party leader check failed");
+            }
+        }
+
         var place = RuleEngine.ResolvePlace(Plugin.ClientState.TerritoryType);
-        var housing = Housing.Read(place.Name);
+        var housing = HousingReader.Read(place.Name);
         if (housing.Kind != ResidenceKind.None)
             flags.Add(ActivityFlag.InResidence);
 
@@ -285,5 +321,37 @@ public sealed record GameSnapshot(
             housing,
             DateTime.Now,
             flags);
+    }
+
+    private static void AddTargetFlags(HashSet<ActivityFlag> flags, IGameObject? player)
+    {
+        try
+        {
+            var target = Plugin.TargetManager.Target ?? Plugin.TargetManager.SoftTarget;
+            if (target is not null && player is not null && target.EntityId != player.EntityId)
+            {
+                if (target.ObjectKind == ObjectKind.Player)
+                    flags.Add(ActivityFlag.TargetingPlayer);
+                else if (target.ObjectKind is ObjectKind.BattleNpc or ObjectKind.EventNpc)
+                    flags.Add(ActivityFlag.TargetingEnemy);
+            }
+
+            if (player is null) return;
+            var me = player.EntityId;
+            foreach (var obj in Plugin.ObjectTable)
+            {
+                if (obj is null || obj.EntityId == me) continue;
+                if (obj.ObjectKind != ObjectKind.Player) continue;
+                if (obj.TargetObjectId == me || obj.TargetObject?.EntityId == me)
+                {
+                    flags.Add(ActivityFlag.TargetedByPlayer);
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Verbose(ex, "Target scan failed");
+        }
     }
 }
