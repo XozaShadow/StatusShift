@@ -7,16 +7,21 @@ namespace StatusShift;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 5;
+    public int Version { get; set; } = 6;
 
     public bool Enabled { get; set; } = true;
     public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
-    public int CooldownSeconds { get; set; } = 45;
+    public int CooldownSeconds { get; set; } = 15;
     public int PollSeconds { get; set; } = 10;
+    public int MinMatchSeconds { get; set; }
     public bool NotifyInChat { get; set; } = true;
     public bool SkipWhileCutscene { get; set; } = true;
     public bool SkipWhileDead { get; set; } = true;
     public bool SkipWhileDuty { get; set; }
+    public bool SkipWhileCombat { get; set; }
+    public bool SkipWhileBetweenAreas { get; set; } = true;
+    public bool SkipWhileOccupied { get; set; }
+    public bool SkipWhileTargetingPlayer { get; set; }
     public bool OpenUiOnLoad { get; set; }
     public bool ShowSnapshot { get; set; } = true;
     public List<StatusRule> Rules { get; set; } = DefaultRules();
@@ -32,6 +37,8 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "In duty",
+            Notes = "Busy while instanced",
+            Folder = "Examples",
             Enabled = true,
             Priority = 100,
             OnlineStatus = OnlineStatusAction.Busy,
@@ -41,6 +48,8 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "Venue hours",
+            Notes = "Weekend evenings",
+            Folder = "Examples",
             Enabled = true,
             Priority = 50,
             OnlineStatus = OnlineStatusAction.Roleplaying,
@@ -56,6 +65,8 @@ public class Configuration : IPluginConfiguration
         new()
         {
             Name = "Default",
+            Notes = "Fallback online",
+            Folder = "Examples",
             Enabled = true,
             Priority = 0,
             OnlineStatus = OnlineStatusAction.Online,
