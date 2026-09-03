@@ -12,7 +12,7 @@ Dalamud plugin that shifts FFXIV **search comment**, **online status**, and opti
 
 Typical local path after a Debug build:
 
-`...\StatusShift\StatusShift\bin\x64\Debug\StatusShift\StatusShift.dll`
+`...\\StatusShift\\StatusShift\\bin\\x64\\Debug\\StatusShift\\StatusShift.dll`
 
 ### B. Custom plugin repo (JSON) — repo must be **public**
 
@@ -30,21 +30,22 @@ Official installer icon is `images/icon.png` (512×512).
 
 ## Commands
 
-`/statusshift` `/ss` `/ss apply` `/ss pause` `/ss resume` `/ss now` `/ss zone` `/ss config`
+`/statusshift` `/ss` `/ss apply` `/ss update` `/ss pause` `/ss resume` `/ss now` `/ss zone` `/ss config`
+
+Handling: `/ss auto` `/ss notifications` `/ss selector` `/ss off`
 
 ## Rules
 
 Highest priority wins.
 
 - Schedule: Always, Daily, Weekly, One Time, Custom (24-hour `HH:mm`, dates `YYYY-MM-DD`)
-- Location: world, zone, region, residence ward/plot/apartment
-- Job abbr or ID
-- State yes/no: combat, weapon drawn, duty, sitting/emote, casting, targeting, targeted by a player, and more
+- AND/OR chips: world, zone, region, residence, job, nearby player, emote, mount, state, contains, regex
 - Then set: online status (or leave alone), optional `/command`, optional search comment
 - Command rerun: once on match, or every N seconds (`0` uses Settings check interval)
 - Tokens: `{zone}` `{region}` `{job}` `{world}` `{home}` `{ward}` `{plot}` `{time}`
+- Share a rule as one-line `SS1.` code from the editor
 
-Confirm mode is default. Auto sends commands after cooldown.
+Handling modes: Off, Notifications, Selector, Auto.
 
 ## Build
 

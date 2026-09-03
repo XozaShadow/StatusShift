@@ -70,7 +70,11 @@ internal sealed partial class RuleEngine
         if (config.SkipWhileOccupied && ctx.Activities.Contains(ActivityFlag.Occupied))
         { reason = "occupied"; return true; }
         if (config.SkipWhileTargetingPlayer && ctx.Activities.Contains(ActivityFlag.TargetingPlayer))
-        { reason = "targeting player"; return true; }
+        { reason = "targeting"; return true; }
+        if (config.SkipWhileTargeted && ctx.Activities.Contains(ActivityFlag.TargetedByPlayer))
+        { reason = "targeted"; return true; }
+        if (config.SkipWhileEmoting && ctx.Activities.Contains(ActivityFlag.Sitting))
+        { reason = "emoting"; return true; }
         return false;
     }
 }
