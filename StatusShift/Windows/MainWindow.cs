@@ -162,7 +162,7 @@ public partial class MainWindow : Window, IDisposable
                 Name = string.IsNullOrWhiteSpace(newRuleName) ? "New rule" : newRuleName.Trim(),
                 Priority = nextPrio,
                 Enabled = false,
-                Folder = selectedFolder is "All" or "Ungrouped" ? string.Empty : selectedFolder,
+                Folder = selectedFolder is "All" or "Ungrouped" || selectedFolder.StartsWith("char:") ? string.Empty : selectedFolder,
             };
             cfg.Rules.Add(rule);
             OpenRule(rule.Id);
@@ -185,6 +185,7 @@ public partial class MainWindow : Window, IDisposable
     private void DrawLists(Configuration cfg)
     {
         var folders = cfg.Rules.Select(r => r.FolderKey).Where(f => f.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(f => f).ToList();
+        var characters = cfg.Rules.Select(r => r.CharacterKey).Where(c => c.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(c => c).ToList();
         ImGui.BeginChild("folders", new Vector2(150, 0), true);
         if (ImGui.Selectable("All", selectedFolder == "All")) selectedFolder = "All";
         if (ImGui.Selectable("Ungrouped", selectedFolder == "Ungrouped")) selectedFolder = "Ungrouped";
@@ -192,6 +193,17 @@ public partial class MainWindow : Window, IDisposable
         {
             if (ImGui.Selectable(folder, selectedFolder.Equals(folder, StringComparison.OrdinalIgnoreCase)))
                 selectedFolder = folder;
+        }
+        if (characters.Count > 0)
+        {
+            ImGui.Separator();
+            ImGui.TextDisabled("Characters");
+            foreach (var name in characters)
+            {
+                var key = "char:" + name;
+                if (ImGui.Selectable(name, selectedFolder.Equals(key, StringComparison.OrdinalIgnoreCase)))
+                    selectedFolder = key;
+            }
         }
         ImGui.EndChild();
         ImGui.SameLine();
@@ -284,6 +296,8 @@ public partial class MainWindow : Window, IDisposable
     {
         if (selectedFolder == "All") return true;
         if (selectedFolder == "Ungrouped") return string.IsNullOrWhiteSpace(rule.Folder);
+        if (selectedFolder.StartsWith("char:", StringComparison.OrdinalIgnoreCase))
+            return rule.CharacterKey.Equals(selectedFolder[5..], StringComparison.OrdinalIgnoreCase);
         return rule.FolderKey.Equals(selectedFolder, StringComparison.OrdinalIgnoreCase);
     }
 

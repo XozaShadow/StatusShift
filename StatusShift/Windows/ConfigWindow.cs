@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -11,10 +12,22 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
+    private static readonly ActivityFlag[] LiveStates =
+    [
+        ActivityFlag.InCombat, ActivityFlag.WeaponDrawn, ActivityFlag.WeaponShown, ActivityFlag.HelmShown,
+        ActivityFlag.Walking, ActivityFlag.Dead, ActivityFlag.Crafting, ActivityFlag.Gathering,
+        ActivityFlag.Mounted, ActivityFlag.Flying, ActivityFlag.Swimming, ActivityFlag.Diving,
+        ActivityFlag.WatchingCutscene, ActivityFlag.InDuty, ActivityFlag.WaitingForDutyFinder,
+        ActivityFlag.InParty, ActivityFlag.PartyLeader, ActivityFlag.PvP, ActivityFlag.InResidence,
+        ActivityFlag.Sitting, ActivityFlag.Casting, ActivityFlag.Jumping, ActivityFlag.Occupied,
+        ActivityFlag.Trading, ActivityFlag.BetweenAreas, ActivityFlag.Roleplaying,
+        ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
+    ];
+
     public ConfigWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(560, 760);
+        Size = new Vector2(560, 800);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -107,13 +120,7 @@ public class ConfigWindow : Window, IDisposable
         ToggleRow(cfg, "Show current info at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Amber, "ANALYSIS");
-        var matches = plugin.CurrentMatches();
-        if (matches.Count == 0) ImGui.TextDisabled("No rules match right now.");
-        foreach (var rule in matches)
-            ImGui.TextUnformatted($"P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
-        ImGui.TextDisabled(plugin.ExplainMatch());
-        ImGui.TextDisabled("State chips: InCombat Walking Sitting Mounted InDuty TargetingPlayer TargetedByPlayer Occupied BetweenAreas Roleplaying HelmShown WeaponShown WeaponDrawn Casting Flying Swimming Dead Crafting Gathering");
+        DrawAnalysis();
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "FULL RULESET BACKUP");
@@ -142,6 +149,54 @@ public class ConfigWindow : Window, IDisposable
         }
         if (!string.IsNullOrEmpty(lastMsg))
             ImGui.TextWrapped(lastMsg);
+    }
+
+    private void DrawAnalysis()
+    {
+        ImGui.TextColored(UiTheme.Amber, "ANALYSIS");
+        var snap = plugin.Snapshot();
+        var look = LiveLook.Capture(plugin.Configuration.NearbyRange);
+        WrapFact($"Job {snap.JobAbbr}", snap.JobAbbr.Length > 0);
+        WrapFact(snap.WorldName, snap.WorldName.Length > 0);
+        WrapFact(snap.TerritoryName, snap.TerritoryName.Length > 0);
+        if (snap.RegionName.Length > 0) WrapFact(snap.RegionName, true);
+        if (snap.ZoneGroupName.Length > 0) WrapFact(snap.ZoneGroupName, true);
+        WrapFact(snap.Housing.Summary, snap.InResidence);
+        if (look.Mounted) WrapFact("Mount " + look.MountName, true);
+        if (look.EmoteName.Length > 0) WrapFact("Emote " + look.EmoteName, true);
+
+        ImGui.Dummy(new Vector2(1, 4));
+        var wrap = ImGui.GetContentRegionAvail().X;
+        var used = 0f;
+        var first = true;
+        foreach (var flag in LiveStates)
+        {
+            var on = snap.Activities.Contains(flag);
+            var label = flag.ToString();
+            var need = ImGui.CalcTextSize(label + ", ").X;
+            if (!first && used + need < wrap) ImGui.SameLine(0, 0);
+            else used = 0;
+            used += need;
+            first = false;
+            ImGui.TextColored(on ? UiTheme.Teal : UiTheme.Mute, label);
+            ImGui.SameLine(0, 0);
+            ImGui.TextDisabled(", ");
+        }
+
+        ImGui.Dummy(new Vector2(1, 6));
+        ImGui.TextColored(UiTheme.Teal, "RULES");
+        var matches = plugin.CurrentMatches();
+        if (matches.Count == 0) ImGui.TextDisabled("No rules match right now.");
+        foreach (var rule in matches)
+            ImGui.TextUnformatted($"P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
+        ImGui.TextDisabled(plugin.ExplainMatch());
+    }
+
+    private static void WrapFact(string text, bool live)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        ImGui.TextColored(live ? UiTheme.Teal : UiTheme.Mute, text);
+        ImGui.SameLine();
     }
 
     private void ToggleRow(Configuration cfg, string label, Func<bool> get, Action<bool> set)
