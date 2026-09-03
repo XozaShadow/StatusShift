@@ -48,8 +48,8 @@ public partial class MainWindow : Window, IDisposable
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(820, 480),
-            MaximumSize = new Vector2(1600, 1200),
+            MinimumSize = new Vector2(720, 520),
+            MaximumSize = new Vector2(1600, 1400),
         };
     }
 
@@ -71,16 +71,15 @@ public partial class MainWindow : Window, IDisposable
         ImGui.BeginChild("body", new Vector2(0, 0), false);
         DrawToolbar(cfg);
 
-        var editorWidth = editorOpen ? 420f : 0f;
-        var left = Math.Max(280f, ImGui.GetContentRegionAvail().X - editorWidth - 8f);
+        var avail = ImGui.GetContentRegionAvail();
+        var listH = editorOpen ? Math.Max(180f, avail.Y * 0.38f) : avail.Y;
 
-        ImGui.BeginChild("leftpane", new Vector2(left, 0), false);
+        ImGui.BeginChild("listpane", new Vector2(0, listH), false);
         DrawLists(cfg);
         ImGui.EndChild();
 
         if (editorOpen)
         {
-            ImGui.SameLine();
             ImGui.BeginChild("editor", new Vector2(0, 0), true);
             StatusRule? remove = null;
             var selectedRule = cfg.Rules.Find(r => r.Id == selectedRuleId);
@@ -201,13 +200,13 @@ public partial class MainWindow : Window, IDisposable
         var visible = cfg.Rules.Where(FolderVisible).OrderByDescending(r => r.Priority).ToList();
         var match = plugin.CurrentRule();
         ImGui.BeginChild("rulelist", new Vector2(0, 0), true);
-        if (ImGui.BeginTable("rules", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.ScrollY))
+        if (ImGui.BeginTable("rules", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit | ImGuiTableFlags.ScrollY | ImGuiTableFlags.PadOuterX))
         {
             ImGui.TableSetupColumn("On", ImGuiTableColumnFlags.WidthFixed, 36);
-            ImGui.TableSetupColumn("P", ImGuiTableColumnFlags.WidthFixed, 36);
-            ImGui.TableSetupColumn("Name");
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 110);
-            ImGui.TableSetupColumn("Notes");
+            ImGui.TableSetupColumn("P", ImGuiTableColumnFlags.WidthFixed, 28);
+            ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 168);
+            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 168);
+            ImGui.TableSetupColumn("Notes", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableHeadersRow();
             foreach (var rule in visible)
             {

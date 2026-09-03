@@ -12,7 +12,7 @@ public sealed partial class Plugin
         get
         {
             var v = typeof(Plugin).Assembly.GetName().Version;
-            return v is null ? "0.1.5.0" : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+            return v is null ? "0.1.5.1" : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
         }
     }
 
