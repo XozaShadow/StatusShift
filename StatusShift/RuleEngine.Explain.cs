@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
@@ -5,6 +6,23 @@ namespace StatusShift;
 
 internal sealed partial class RuleEngine
 {
+    public List<StatusRule> FindMatches()
+    {
+        var list = new List<StatusRule>();
+        if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded)
+            return list;
+        var ctx = Snapshot();
+        if (Skipped(ctx, out _))
+            return list;
+        foreach (var rule in config.Rules.OrderByDescending(r => r.Priority))
+        {
+            if (!rule.Enabled) continue;
+            if (Matches(rule, ctx) && ChipsOk(rule, ctx))
+                list.Add(rule);
+        }
+        return list;
+    }
+
     public string Explain()
     {
         if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded)
@@ -14,29 +32,18 @@ internal sealed partial class RuleEngine
         if (Skipped(ctx, out var why))
             return $"Skipped: {why}";
 
-        var sb = new StringBuilder();
-        StatusRule? winner = null;
-        foreach (var rule in config.Rules.OrderByDescending(r => r.Priority))
-        {
-            if (!rule.Enabled) continue;
-            if (Matches(rule, ctx) && ChipsOk(rule, ctx))
-            {
-                winner = rule;
-                break;
-            }
-        }
-
-        if (winner is null)
+        var matches = FindMatches();
+        if (matches.Count == 0)
             return "No enabled rule matches.";
 
+        var winner = matches[0];
+        var sb = new StringBuilder();
         sb.Append($"P{winner.Priority} {winner.Name}");
-        sb.Append(ScheduleMatches(winner, ctx.Now) ? " · schedule yes" : " · schedule no");
         var andN = winner.AndChips?.Count ?? 0;
         var orN = winner.OrChips?.Count ?? 0;
         if (andN > 0) sb.Append($" · AND x{andN}");
         if (orN > 0) sb.Append($" · OR x{orN}");
-        if (winner.HasCharacterFilter)
-            sb.Append(" · character yes");
+        if (matches.Count > 1) sb.Append($" · +{matches.Count - 1} lower");
         return sb.ToString();
     }
 
