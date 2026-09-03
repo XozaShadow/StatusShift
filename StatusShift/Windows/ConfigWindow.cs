@@ -11,10 +11,10 @@ public class ConfigWindow : Window, IDisposable
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
 
-    public ConfigWindow(Plugin plugin) : base("Status Shift v0.1.3.1 Settings###StatusShiftConfig")
+    public ConfigWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(540, 640);
+        Size = new Vector2(560, 720);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -22,96 +22,123 @@ public class ConfigWindow : Window, IDisposable
 
     public override void Draw()
     {
+        WindowName = $"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig";
         var cfg = plugin.Configuration;
 
-        ImGui.TextColored(UiTheme.Amber, "Apply");
+        ImGui.TextColored(UiTheme.Teal, "SKIP CHECKS WHILE");
+        ToggleRow(cfg, "In Combat", () => cfg.SkipWhileCombat, v => cfg.SkipWhileCombat = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Dead", () => cfg.SkipWhileDead, v => cfg.SkipWhileDead = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "In Duty", () => cfg.SkipWhileDuty, v => cfg.SkipWhileDuty = v);
+        ToggleRow(cfg, "In Cutscene", () => cfg.SkipWhileCutscene, v => cfg.SkipWhileCutscene = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Occupied", () => cfg.SkipWhileOccupied, v => cfg.SkipWhileOccupied = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Between Areas", () => cfg.SkipWhileBetweenAreas, v => cfg.SkipWhileBetweenAreas = v);
+        ToggleRow(cfg, "Targeting player", () => cfg.SkipWhileTargetingPlayer, v => cfg.SkipWhileTargetingPlayer = v);
+
+        ImGui.Separator();
+        ImGui.TextColored(UiTheme.Amber, "TIMERS / HANDLING");
         var mode = (int)cfg.ApplyMode;
-        if (ImGui.Combo("Apply mode", ref mode, ["Confirm (notify only)", "Auto"], 2))
+        if (ImGui.Combo("Handling Mode", ref mode, ["Notifications", "Auto", "Off", "Selector"], 4))
         {
-            cfg.ApplyMode = (ApplyMode)mode;
+            cfg.ApplyMode = mode switch
+            {
+                1 => ApplyMode.Auto,
+                2 => ApplyMode.Off,
+                3 => ApplyMode.Selector,
+                _ => ApplyMode.Confirm,
+            };
             cfg.Save();
             plugin.RequestEval();
         }
-        Hint("Confirm only prints the match. Auto applies when the winner or game state changes.");
-
-        var cooldown = cfg.CooldownSeconds;
-        if (ImGui.SliderInt("Auto cooldown (s)", ref cooldown, 5, 180))
+        if (cfg.ApplyMode == ApplyMode.Auto)
         {
-            cfg.CooldownSeconds = cooldown;
-            cfg.Save();
+            var cooldown = cfg.CooldownSeconds;
+            if (ImGui.SliderInt("Auto (s)", ref cooldown, 5, 180))
+            {
+                cfg.CooldownSeconds = cooldown;
+                cfg.Save();
+            }
         }
-        Hint("Minimum time between two applies of the same kind of change. New winning rules apply immediately.");
-
-        var poll = cfg.PollSeconds;
-        if (ImGui.SliderInt("Check interval (s)", ref poll, 3, 60))
+        if (cfg.ApplyMode != ApplyMode.Off)
         {
-            cfg.PollSeconds = poll;
-            cfg.Save();
+            var poll = cfg.PollSeconds;
+            if (ImGui.SliderInt("Check Interval (s)", ref poll, 3, 120))
+            {
+                cfg.PollSeconds = poll;
+                cfg.Save();
+            }
+            var hold = cfg.MinMatchSeconds;
+            if (ImGui.SliderInt("Min Match Time (s)", ref hold, 0, 15))
+            {
+                cfg.MinMatchSeconds = hold;
+                cfg.Save();
+            }
         }
-        Hint("Backup scan and command rerun timer. State changes still eval immediately.");
-
-        var hold = cfg.MinMatchSeconds;
-        if (ImGui.SliderInt("Min match time (s)", ref hold, 0, 15))
-        {
-            cfg.MinMatchSeconds = hold;
-            cfg.Save();
-        }
-        Hint("Rule must stay the winner this long before Auto applies. 0 = instant.");
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Teal, "Skip checks while");
-        Toggle("Cutscene", () => cfg.SkipWhileCutscene, v => cfg.SkipWhileCutscene = v, "Do not eval during cutscenes.");
-        Toggle("Dead", () => cfg.SkipWhileDead, v => cfg.SkipWhileDead = v, "Do not eval while knocked out.");
-        Toggle("In duty", () => cfg.SkipWhileDuty, v => cfg.SkipWhileDuty = v, "Do not eval in instanced duty.");
-        Toggle("Combat", () => cfg.SkipWhileCombat, v => cfg.SkipWhileCombat = v, "Do not eval in combat.");
-        Toggle("Between areas", () => cfg.SkipWhileBetweenAreas, v => cfg.SkipWhileBetweenAreas = v, "Do not eval while zoning.");
-        Toggle("Occupied", () => cfg.SkipWhileOccupied, v => cfg.SkipWhileOccupied = v, "Do not eval in events / occupancy.");
-        Toggle("Targeting player", () => cfg.SkipWhileTargetingPlayer, v => cfg.SkipWhileTargetingPlayer = v, "Do not eval while targeting a player.");
+        ImGui.TextColored(UiTheme.Teal, "NOTIFICATION / OTHER");
+        ToggleRow(cfg, "Notify in Chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Notify with sound", () => cfg.ConfirmPing, v => cfg.ConfirmPing = v);
+        ToggleRow(cfg, "Open Main on Load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Show current info at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Teal, "Display");
-        Toggle("Notify in chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v, "Print Status Shift messages to chat.");
-        Toggle("Show current location/job at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v, "Main window snapshot line.");
-        Toggle("Open main window on load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v, "Open the rule window when the plugin loads.");
+        ImGui.TextColored(UiTheme.Amber, "ANALYSIS");
+        var matches = plugin.CurrentMatches();
+        if (matches.Count == 0) ImGui.TextDisabled("No rules match right now.");
+        foreach (var rule in matches)
+            ImGui.TextUnformatted($"P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
+        ImGui.TextDisabled(plugin.ExplainMatch());
+        ImGui.TextDisabled("Chip state names: InCombat Walking Sitting Mounted InDuty TargetingPlayer TargetedByPlayer Occupied BetweenAreas Roleplaying HelmShown WeaponShown WeaponDrawn");
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Amber, "Analysis");
-        ImGui.TextWrapped(plugin.ExplainMatch());
-        Hint("How the current match was chosen.");
-
-        ImGui.Separator();
-        ImGui.TextDisabled("Rules also save to pluginConfigs/StatusShift/rules.json across updates.");
-
-        if (ImGui.Button("Copy all rules JSON"))
+        ImGui.TextColored(UiTheme.Teal, "FULL RULESET BACKUP");
+        if (ImGui.Button("Copy All to Clipboard"))
         {
             ImGui.SetClipboardText(plugin.ExportRulesJson());
             lastMsg = "All rules copied.";
         }
         ImGui.SameLine();
-        if (ImGui.Button("Replace all from clipboard"))
+        if (ImGui.Button("Replace all from Clipboard"))
         {
-            var clip = ImGui.GetClipboardText();
-            lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Replaced all rules." : err;
+            var clip = ImGui.GetClipboardText() ?? string.Empty;
+            if (LooksLikeRules(clip))
+                lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Replaced all rules." : err;
+            else lastMsg = "Clipboard is empty or not Status Shift JSON.";
         }
+        Hint("Replaces every rule. Need valid Status Shift JSON.");
 
-        ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 80));
-        if (ImGui.Button("Import box as full replace"))
-            lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Replaced all rules." : err2;
-
+        ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 90));
+        if (ImGui.Button("Replace All With Import Box Content"))
+        {
+            if (LooksLikeRules(importBuf))
+                lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Replaced all rules." : err2;
+            else lastMsg = "Box is empty or not Status Shift JSON.";
+        }
         if (!string.IsNullOrEmpty(lastMsg))
             ImGui.TextWrapped(lastMsg);
     }
 
-    private void Toggle(string label, Func<bool> get, Action<bool> set, string tip)
+    private void ToggleRow(Configuration cfg, string label, Func<bool> get, Action<bool> set)
     {
         var v = get();
         if (ImGui.Checkbox(label, ref v))
         {
             set(v);
-            plugin.Configuration.Save();
+            cfg.Save();
             plugin.RequestEval();
         }
-        Hint(tip);
+    }
+
+    private static bool LooksLikeRules(string text)
+    {
+        text = (text ?? string.Empty).Trim();
+        return text.StartsWith('[') || text.StartsWith('{') || text.StartsWith("SS1.", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void Hint(string text)
