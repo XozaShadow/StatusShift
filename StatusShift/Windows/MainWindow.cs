@@ -43,51 +43,119 @@ public partial class MainWindow : Window, IDisposable
         ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
     ];
 
-    public MainWindow(Plugin plugin) : base("Status Shift v0.1.3.1###StatusShiftMain")
+    public MainWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion}###StatusShiftMain")
     {
         this.plugin = plugin;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(720, 460),
-            MaximumSize = new Vector2(1100, 1100),
+            MinimumSize = new Vector2(820, 480),
+            MaximumSize = new Vector2(1600, 1200),
         };
     }
 
     public void Dispose() { }
 
+    public void OpenRule(string id)
+    {
+        selectedRuleId = id;
+        editorOpen = true;
+        IsOpen = true;
+    }
+
     public override void Draw()
     {
+        WindowName = $"Status Shift v{Plugin.AppVersion}###StatusShiftMain";
         var cfg = plugin.Configuration;
+        DrawPinned(cfg);
+
+        ImGui.BeginChild("body", new Vector2(0, 0), false);
+        DrawToolbar(cfg);
+
+        var editorWidth = editorOpen ? 420f : 0f;
+        var left = Math.Max(280f, ImGui.GetContentRegionAvail().X - editorWidth - 8f);
+
+        ImGui.BeginChild("leftpane", new Vector2(left, 0), false);
+        DrawLists(cfg);
+        ImGui.EndChild();
+
+        if (editorOpen)
+        {
+            ImGui.SameLine();
+            ImGui.BeginChild("editor", new Vector2(0, 0), true);
+            StatusRule? remove = null;
+            var selectedRule = cfg.Rules.Find(r => r.Id == selectedRuleId);
+            if (selectedRule is not null)
+            {
+                ImGui.PushID(selectedRule.Id);
+                DrawRule(cfg, selectedRule, ref remove);
+                ImGui.PopID();
+            }
+            else editorOpen = false;
+            if (remove is not null)
+            {
+                cfg.Rules.Remove(remove);
+                selectedRuleId = null;
+                editorOpen = false;
+                cfg.Save();
+            }
+            ImGui.EndChild();
+        }
+        ImGui.EndChild();
+    }
+
+    private void DrawPinned(Configuration cfg)
+    {
         var enabled = cfg.Enabled;
         if (ImGui.Checkbox("Enabled", ref enabled)) { cfg.Enabled = enabled; cfg.Save(); plugin.RequestEval(); }
         ImGui.SameLine();
-        if (ImGui.Button("Update Now")) plugin.TryApply(force: true);
-        Hint("Apply the current match now, ignoring Confirm.");
+        if (ImGui.Button("Check Now")) plugin.TryApply(force: true);
         ImGui.SameLine();
         if (ImGui.Button("Settings")) plugin.ToggleConfigUi();
-        Hint("Apply mode, timers, skip-while, import.");
         ImGui.SameLine();
-        ImGui.TextColored(UiTheme.Teal, plugin.StatusLine());
-        Hint("Auto applies on state change. Confirm only notifies. /ss pause 120 for a timed pause.");
+        ImGui.TextColored(UiTheme.Teal, $"{ApplyModeNames.Label(cfg.ApplyMode)}  {plugin.StatusLine()}");
 
         if (cfg.ShowSnapshot)
         {
             var snap = plugin.Snapshot();
-            ImGui.PushStyleColor(ImGuiCol.Text, UiTheme.Teal);
-            ImGui.TextUnformatted($"{snap.WorldName} · {snap.TerritoryName} ({snap.TerritoryId}) · {snap.Housing.Summary}");
-            ImGui.PopStyleColor();
-            ImGui.TextDisabled($"Job {snap.JobAbbr}  ID {snap.JobId}");
+            ImGui.TextColored(UiTheme.Teal, $"{snap.JobAbbr}  |  {snap.WorldName} · {snap.TerritoryName} · {snap.Housing.Summary}");
         }
 
-        var match = plugin.CurrentRule();
-        ImGui.TextColored(UiTheme.Amber, match is null ? "Current match: none" : $"Current match: [{match.Name}] P{match.Priority}");
-        ImGui.TextDisabled(plugin.ExplainMatch());
-
+        var matches = plugin.CurrentMatches();
+        if (matches.Count == 0)
+            ImGui.TextColored(UiTheme.Amber, "Current match: none");
+        else
+        {
+            ImGui.TextUnformatted("Current match:");
+            for (var i = 0; i < matches.Count && i < 6; i++)
+            {
+                var rule = matches[i];
+                ImGui.SameLine();
+                ImGui.PushID("m" + rule.Id);
+                var on = rule.Enabled;
+                if (ImGui.Checkbox("##mon", ref on))
+                {
+                    rule.Enabled = on;
+                    cfg.Save();
+                    plugin.RequestEval();
+                }
+                ImGui.SameLine();
+                var label = i == 0
+                    ? $"P{rule.Priority} {rule.Name} {StatusShort(rule)}"
+                    : $"| P{rule.Priority} {rule.Name}";
+                if (ImGui.SmallButton(label))
+                    OpenRule(rule.Id);
+                ImGui.PopID();
+            }
+        }
         ImGui.Separator();
-        ImGui.SetNextItemWidth(180);
+    }
+
+    private void DrawToolbar(Configuration cfg)
+    {
+        ImGui.SetNextItemWidth(200);
         ImGui.InputTextWithHint("##newname", "New rule name", ref newRuleName, 64);
         ImGui.SameLine();
-        if (ImGui.Button("Add rule"))
+        if (ImGui.Button("Add Rule"))
         {
             var nextPrio = cfg.Rules.Count == 0 ? 10 : cfg.Rules.Max(r => r.Priority) + 10;
             var rule = new StatusRule
@@ -98,24 +166,27 @@ public partial class MainWindow : Window, IDisposable
                 Folder = selectedFolder is "All" or "Ungrouped" ? string.Empty : selectedFolder,
             };
             cfg.Rules.Add(rule);
-            selectedRuleId = rule.Id;
-            editorOpen = true;
+            OpenRule(rule.Id);
             newRuleName = string.Empty;
             cfg.Save();
         }
         ImGui.SameLine();
-        if (ImGui.Button("Import rule"))
+        if (ImGui.Button("Import Rule"))
         {
-            importMsg = plugin.TryImportOneRule(ImGui.GetClipboardText() ?? string.Empty, out var err)
-                ? "Imported from clipboard."
-                : err;
+            var clip = ImGui.GetClipboardText() ?? string.Empty;
+            importMsg = plugin.TryImportOneRule(clip, out var err) ? "Imported." : err;
         }
-        Hint("Paste a rule copied with Copy rule.");
         if (!string.IsNullOrEmpty(importMsg))
+        {
+            ImGui.SameLine();
             ImGui.TextDisabled(importMsg);
+        }
+    }
 
+    private void DrawLists(Configuration cfg)
+    {
         var folders = cfg.Rules.Select(r => r.FolderKey).Where(f => f.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(f => f).ToList();
-        ImGui.BeginChild("folders", new Vector2(160, 260), true);
+        ImGui.BeginChild("folders", new Vector2(150, 0), true);
         if (ImGui.Selectable("All", selectedFolder == "All")) selectedFolder = "All";
         if (ImGui.Selectable("Ungrouped", selectedFolder == "Ungrouped")) selectedFolder = "Ungrouped";
         foreach (var folder in folders)
@@ -127,16 +198,16 @@ public partial class MainWindow : Window, IDisposable
         ImGui.SameLine();
 
         StatusRule? remove = null;
-        var visible = cfg.Rules.Where(r => FolderVisible(r)).OrderByDescending(r => r.Priority).ToList();
-        ImGui.BeginChild("rulelist", new Vector2(0, 260), true);
-        if (ImGui.BeginTable("rules", 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.ScrollY))
+        var visible = cfg.Rules.Where(FolderVisible).OrderByDescending(r => r.Priority).ToList();
+        var match = plugin.CurrentRule();
+        ImGui.BeginChild("rulelist", new Vector2(0, 0), true);
+        if (ImGui.BeginTable("rules", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.ScrollY))
         {
             ImGui.TableSetupColumn("On", ImGuiTableColumnFlags.WidthFixed, 36);
             ImGui.TableSetupColumn("P", ImGuiTableColumnFlags.WidthFixed, 36);
             ImGui.TableSetupColumn("Name");
-            ImGui.TableSetupColumn("Status");
+            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 110);
             ImGui.TableSetupColumn("Notes");
-            ImGui.TableSetupColumn("If");
             ImGui.TableHeadersRow();
             foreach (var rule in visible)
             {
@@ -148,14 +219,11 @@ public partial class MainWindow : Window, IDisposable
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted(rule.Priority.ToString());
                 ImGui.TableNextColumn();
-                var label = rule.Name;
-                if (rule.HasCharacterFilter) label += $"  {rule.CharacterFilter.Trim()}";
                 var selected = selectedRuleId == rule.Id;
-                if (ImGui.Selectable(label, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
+                if (ImGui.Selectable(rule.Name, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
                 {
                     selectedRuleId = rule.Id;
-                    if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                        editorOpen = true;
+                    editorOpen = true;
                 }
                 if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
                 {
@@ -164,28 +232,15 @@ public partial class MainWindow : Window, IDisposable
                     ImGui.OpenPopup("rulectx");
                 }
                 ImGui.TableNextColumn();
-                ImGui.TextUnformatted(rule.OnlineStatus == OnlineStatusAction.LeaveAlone ? "-" : ChatSender.StatusLabels[(int)rule.OnlineStatus]);
+                ImGui.TextUnformatted(StatusShort(rule));
                 ImGui.TableNextColumn();
                 ImGui.TextDisabled(rule.Notes);
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled(HeaderChips(rule));
                 DrawContext(cfg, rule, match, ref remove);
                 ImGui.PopID();
             }
             ImGui.EndTable();
         }
         ImGui.EndChild();
-
-        var selectedRule = cfg.Rules.Find(r => r.Id == selectedRuleId);
-        if (selectedRule is not null && editorOpen)
-        {
-            ImGui.Separator();
-            ImGui.TextColored(UiTheme.Amber, $"Edit  P{selectedRule.Priority}  {selectedRule.Name}");
-            ImGui.PushID(selectedRule.Id);
-            DrawRule(cfg, selectedRule, ref remove);
-            ImGui.PopID();
-        }
-
         if (remove is not null)
         {
             cfg.Rules.Remove(remove);
@@ -203,19 +258,20 @@ public partial class MainWindow : Window, IDisposable
             cfg.Save();
             plugin.RequestEval();
         }
-        if (ImGui.MenuItem(rule.Sticky ? "Unsticky" : "Sticky"))
-        {
-            rule.Sticky = !rule.Sticky;
-            cfg.Save();
-        }
         if (ImGui.MenuItem("Edit")) editorOpen = true;
-        if (ImGui.MenuItem("Apply if matching") && match?.Id == rule.Id)
-            plugin.TryApply(rule, force: true);
-        if (ImGui.MenuItem("Copy rule"))
+        if (ImGui.MenuItem("Duplicate")) plugin.DuplicateRule(rule);
+        if (ImGui.MenuItem("Copy JSON"))
         {
             ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
             importMsg = $"Copied {rule.Name}.";
         }
+        if (ImGui.MenuItem("Copy share code"))
+        {
+            ImGui.SetClipboardText(ChipShare.Encode(rule));
+            importMsg = "Share code copied.";
+        }
+        if (ImGui.MenuItem("Apply") && match?.Id == rule.Id)
+            plugin.TryApply(rule, force: true);
         var io = ImGui.GetIO();
         if (io.KeyShift || io.KeyCtrl)
         {
@@ -232,26 +288,8 @@ public partial class MainWindow : Window, IDisposable
         return rule.FolderKey.Equals(selectedFolder, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string HeaderChips(StatusRule rule)
-    {
-        var parts = new List<string>();
-        var sched = rule.Schedule ?? new RuleSchedule();
-        if (sched.Mode != ScheduleMode.Always) parts.Add("Schd");
-        var loc = rule.Location ?? new LocationFilter();
-        if ((loc.Kind != LocationKind.Any && loc.Kind != LocationKind.World)
-            || !string.IsNullOrWhiteSpace(rule.WorldFilter)
-            || rule.WorldNames.Count > 0
-            || rule.WorldIds.Count > 0
-            || rule.TerritoryIds.Count > 0
-            || rule.TerritoryNameContains.Count > 0)
-            parts.Add("Loc");
-        if (rule.JobIds.Count > 0 || rule.JobAbbrs.Count > 0) parts.Add("Job");
-        var stateN = rule.States.Count(s => s.Op != MatchOp.Any);
-        if (stateN == 1) parts.Add("St");
-        else if (stateN > 1) parts.Add(rule.StateMatch == StateCombine.Any ? $"Stx{stateN}OR" : $"Stx{stateN}AND");
-        if (rule.HasCharacterFilter) parts.Add("Char");
-        return string.Join("  ", parts);
-    }
+    private static string StatusShort(StatusRule rule) =>
+        rule.OnlineStatus == OnlineStatusAction.LeaveAlone ? "-" : ChatSender.StatusLabels[(int)rule.OnlineStatus];
 
     private static bool TryParseHm(string text, out int hour, out int minute)
     {
