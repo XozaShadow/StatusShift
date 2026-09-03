@@ -24,6 +24,7 @@ public enum ApplyMode
 {
     Confirm = 0,
     Auto = 1,
+    Off = 2,
 }
 
 public enum ScheduleMode
@@ -128,7 +129,7 @@ public class StateFilter
 }
 
 [Serializable]
-public class StatusRule
+public partial class StatusRule
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New rule";
