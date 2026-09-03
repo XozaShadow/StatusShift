@@ -18,9 +18,8 @@ internal sealed partial class RuleEngine
         StatusRule? winner = null;
         foreach (var rule in config.Rules.OrderByDescending(r => r.Priority))
         {
-            if (!rule.Enabled)
-                continue;
-            if (Matches(rule, ctx))
+            if (!rule.Enabled) continue;
+            if (Matches(rule, ctx) && ChipsOk(rule, ctx))
             {
                 winner = rule;
                 break;
@@ -32,13 +31,20 @@ internal sealed partial class RuleEngine
 
         sb.Append($"P{winner.Priority} {winner.Name}");
         sb.Append(ScheduleMatches(winner, ctx.Now) ? " · schedule yes" : " · schedule no");
-        sb.Append(WorldMatches(winner, ctx) && LocationMatches(winner, ctx) ? " · loc yes" : " · loc no");
-        sb.Append(winner.JobIds.Count == 0 && winner.JobAbbrs.Count == 0 ? " · job any" : " · job yes");
-        var stateN = winner.States.Count(s => s.Op != MatchOp.Any);
-        sb.Append(stateN == 0 ? " · state any" : winner.StateMatch == StateCombine.All ? $" · state AND x{stateN}" : $" · state OR x{stateN}");
+        var andN = winner.AndChips?.Count ?? 0;
+        var orN = winner.OrChips?.Count ?? 0;
+        if (andN > 0) sb.Append($" · AND x{andN}");
+        if (orN > 0) sb.Append($" · OR x{orN}");
         if (winner.HasCharacterFilter)
             sb.Append(" · character yes");
         return sb.ToString();
+    }
+
+    internal static bool ChipsOk(StatusRule rule, GameSnapshot ctx)
+    {
+        var look = LiveLook.Capture(80f);
+        return ChipEval.AllMatch(rule.AndChips ?? [], ctx, look)
+               && ChipEval.AnyMatch(rule.OrChips ?? [], ctx, look);
     }
 
     public bool Skipped(GameSnapshot ctx, out string reason)
