@@ -25,6 +25,7 @@ public enum ApplyMode
     Confirm = 0,
     Auto = 1,
     Off = 2,
+    Selector = 3,
 }
 
 public enum ScheduleMode
