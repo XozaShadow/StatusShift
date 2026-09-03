@@ -14,7 +14,7 @@ public class ConfigWindow : Window, IDisposable
     public ConfigWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig")
     {
         this.plugin = plugin;
-        Size = new Vector2(560, 720);
+        Size = new Vector2(560, 760);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -36,23 +36,28 @@ public class ConfigWindow : Window, IDisposable
         ToggleRow(cfg, "Occupied", () => cfg.SkipWhileOccupied, v => cfg.SkipWhileOccupied = v);
         ImGui.SameLine();
         ToggleRow(cfg, "Between Areas", () => cfg.SkipWhileBetweenAreas, v => cfg.SkipWhileBetweenAreas = v);
-        ToggleRow(cfg, "Targeting player", () => cfg.SkipWhileTargetingPlayer, v => cfg.SkipWhileTargetingPlayer = v);
+        ToggleRow(cfg, "Targeting", () => cfg.SkipWhileTargetingPlayer, v => cfg.SkipWhileTargetingPlayer = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Targeted", () => cfg.SkipWhileTargeted, v => cfg.SkipWhileTargeted = v);
+        ImGui.SameLine();
+        ToggleRow(cfg, "Emoting", () => cfg.SkipWhileEmoting, v => cfg.SkipWhileEmoting = v);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Amber, "TIMERS / HANDLING");
         var mode = (int)cfg.ApplyMode;
-        if (ImGui.Combo("Handling Mode", ref mode, ["Notifications", "Auto", "Off", "Selector"], 4))
+        if (ImGui.Combo("Handling Mode", ref mode, ApplyModeNames.Labels, ApplyModeNames.Labels.Length))
         {
-            cfg.ApplyMode = mode switch
-            {
-                1 => ApplyMode.Auto,
-                2 => ApplyMode.Off,
-                3 => ApplyMode.Selector,
-                _ => ApplyMode.Confirm,
-            };
+            cfg.ApplyMode = (ApplyMode)mode;
             cfg.Save();
             plugin.RequestEval();
         }
+        ImGui.TextDisabled(mode switch
+        {
+            (int)ApplyMode.Auto => "Applies the highest matching rule.",
+            (int)ApplyMode.Off => "No timers, popups, or notifications.",
+            (int)ApplyMode.Selector => "Opens a list of matching rules. Click one to apply.",
+            _ => "Chat / toast / sound only. Use /ss apply to set.",
+        });
         if (cfg.ApplyMode == ApplyMode.Auto)
         {
             var cooldown = cfg.CooldownSeconds;
@@ -82,7 +87,21 @@ public class ConfigWindow : Window, IDisposable
         ImGui.TextColored(UiTheme.Teal, "NOTIFICATION / OTHER");
         ToggleRow(cfg, "Notify in Chat", () => cfg.NotifyInChat, v => cfg.NotifyInChat = v);
         ImGui.SameLine();
+        ToggleRow(cfg, "Notify with Toast", () => cfg.NotifyWithToast, v => cfg.NotifyWithToast = v);
         ToggleRow(cfg, "Notify with sound", () => cfg.ConfirmPing, v => cfg.ConfirmPing = v);
+        if (cfg.ConfirmPing)
+        {
+            ImGui.SameLine();
+            var sound = cfg.NotifySound;
+            ImGui.SetNextItemWidth(80);
+            if (ImGui.SliderInt("##snd", ref sound, 1, 16))
+            {
+                cfg.NotifySound = sound;
+                cfg.Save();
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Test")) GameSounds.Play(cfg.NotifySound);
+        }
         ToggleRow(cfg, "Open Main on Load", () => cfg.OpenUiOnLoad, v => cfg.OpenUiOnLoad = v);
         ImGui.SameLine();
         ToggleRow(cfg, "Show current info at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
@@ -94,7 +113,7 @@ public class ConfigWindow : Window, IDisposable
         foreach (var rule in matches)
             ImGui.TextUnformatted($"P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
         ImGui.TextDisabled(plugin.ExplainMatch());
-        ImGui.TextDisabled("Chip state names: InCombat Walking Sitting Mounted InDuty TargetingPlayer TargetedByPlayer Occupied BetweenAreas Roleplaying HelmShown WeaponShown WeaponDrawn");
+        ImGui.TextDisabled("State chips: InCombat Walking Sitting Mounted InDuty TargetingPlayer TargetedByPlayer Occupied BetweenAreas Roleplaying HelmShown WeaponShown WeaponDrawn Casting Flying Swimming Dead Crafting Gathering");
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "FULL RULESET BACKUP");
@@ -111,7 +130,8 @@ public class ConfigWindow : Window, IDisposable
                 lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Replaced all rules." : err;
             else lastMsg = "Clipboard is empty or not Status Shift JSON.";
         }
-        Hint("Replaces every rule. Need valid Status Shift JSON.");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Replaces every rule. Needs valid Status Shift JSON. Empty clipboard is ignored.");
 
         ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 90));
         if (ImGui.Button("Replace All With Import Box Content"))
@@ -138,14 +158,6 @@ public class ConfigWindow : Window, IDisposable
     private static bool LooksLikeRules(string text)
     {
         text = (text ?? string.Empty).Trim();
-        return text.StartsWith('[') || text.StartsWith('{') || text.StartsWith("SS1.", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void Hint(string text)
-    {
-        ImGui.SameLine();
-        ImGui.TextDisabled("(i)");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(text);
+        return text.StartsWith('[') || text.StartsWith('{');
     }
 }
