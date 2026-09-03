@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Dalamud.Game.Command;
+using Dalamud.Game.Gui.Toast;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Windowing;
@@ -12,7 +13,7 @@ using StatusShift.Windows;
 
 namespace StatusShift;
 
-public sealed class Plugin : IDalamudPlugin
+public sealed partial class Plugin : IDalamudPlugin
 {
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
@@ -25,6 +26,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ICondition Condition { get; private set; } = null!;
     [PluginService] internal static IPartyList PartyList { get; private set; } = null!;
     [PluginService] internal static IChatGui Chat { get; private set; } = null!;
+    [PluginService] internal static IToastGui Toast { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string CommandName = "/statusshift";
@@ -37,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RuleEngine engine;
     private readonly ConfigWindow configWindow;
     private readonly MainWindow mainWindow;
+    private readonly SelectorWindow selectorWindow;
 
     private DateTime lastEval = DateTime.MinValue;
     private DateTime lastApply = DateTime.MinValue;
@@ -50,6 +53,7 @@ public sealed class Plugin : IDalamudPlugin
     private string? lastMatchedRuleId;
     private string? lastCommandRuleId;
     private string? pendingRuleId;
+    private string? lastSelectorKey;
     private bool paused;
 
     public Plugin()
@@ -60,8 +64,10 @@ public sealed class Plugin : IDalamudPlugin
 
         configWindow = new ConfigWindow(this);
         mainWindow = new MainWindow(this);
+        selectorWindow = new SelectorWindow(this);
         WindowSystem.AddWindow(configWindow);
         WindowSystem.AddWindow(mainWindow);
+        WindowSystem.AddWindow(selectorWindow);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -118,7 +124,9 @@ public sealed class Plugin : IDalamudPlugin
             }
             return "Paused";
         }
-        var mode = Configuration.ApplyMode == ApplyMode.Auto ? "Auto" : "Confirm";
+        var mode = ApplyModeNames.Label(Configuration.ApplyMode);
+        if (Configuration.ApplyMode == ApplyMode.Off)
+            return mode;
         var poll = Math.Max(3, Configuration.PollSeconds);
         var next = Math.Max(0, poll - (int)(DateTime.Now - lastEval).TotalSeconds);
         var coolLeft = Math.Max(0, Math.Max(10, Configuration.CooldownSeconds) - (int)(DateTime.Now - lastApply).TotalSeconds);
@@ -150,21 +158,32 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
-    public bool TryImportOneRule(string json, out string error)
+    public bool TryImportOneRule(string text, out string error)
     {
         error = string.Empty;
-        json = json.Trim();
+        text = (text ?? string.Empty).Trim();
+        if (text.Length == 0) { error = "Clipboard is empty."; return false; }
+
+        if (text.StartsWith("SS1.", StringComparison.OrdinalIgnoreCase)
+            && ChipShare.TryDecode(text, out var decoded, out error) && decoded is not null)
+        {
+            AddImported(decoded);
+            Configuration.Save();
+            error = string.Empty;
+            return true;
+        }
+
         try
         {
-            if (json.StartsWith('['))
+            if (text.StartsWith('['))
             {
-                var many = JsonSerializer.Deserialize<List<StatusRule>>(json);
+                var many = JsonSerializer.Deserialize<List<StatusRule>>(text);
                 if (many is null || many.Count == 0) { error = "No rule in clipboard."; return false; }
                 foreach (var r in many) AddImported(r);
             }
             else
             {
-                var one = JsonSerializer.Deserialize<StatusRule>(json);
+                var one = JsonSerializer.Deserialize<StatusRule>(text);
                 if (one is null) { error = "Clipboard is not a rule."; return false; }
                 AddImported(one);
             }
@@ -173,7 +192,7 @@ public sealed class Plugin : IDalamudPlugin
         }
         catch (Exception ex)
         {
-            error = ex.Message;
+            error = string.IsNullOrEmpty(error) ? ex.Message : error;
             return false;
         }
     }
@@ -242,7 +261,7 @@ public sealed class Plugin : IDalamudPlugin
         if (IsSelfCommand(command, out var selfKey))
         {
             if (!allowSelf) return true;
-            if (selfKey is "apply" or "now")
+            if (selfKey is "apply" or "now" or "update")
                 return true;
             Notify($"Ignored Status Shift command on [{rule.Name}].");
             return true;
@@ -287,7 +306,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             case "help": PrintHelp(); break;
             case "config": ToggleConfigUi(); break;
-            case "apply": TryApply(force: true); break;
+            case "apply":
+            case "update": TryApply(force: true); break;
             case "pause":
             {
                 paused = true;
@@ -317,9 +337,23 @@ public sealed class Plugin : IDalamudPlugin
                 Evaluate(forceNotice: true, fromEvent: true);
                 break;
             case "confirm":
+            case "notify":
+            case "notifications":
                 Configuration.ApplyMode = ApplyMode.Confirm;
                 Configuration.Save();
-                Notify("Apply mode: Confirm");
+                Notify("Apply mode: Notifications");
+                break;
+            case "off":
+                Configuration.ApplyMode = ApplyMode.Off;
+                Configuration.Save();
+                selectorWindow.Hide();
+                Notify("Apply mode: Off");
+                break;
+            case "selector":
+                Configuration.ApplyMode = ApplyMode.Selector;
+                Configuration.Save();
+                Notify("Apply mode: Selector");
+                Evaluate(forceNotice: true, fromEvent: true);
                 break;
             case "zone":
             {
@@ -340,11 +374,11 @@ public sealed class Plugin : IDalamudPlugin
     private void PrintHelp()
     {
         Notify("/ss — open window");
-        Notify("/ss apply — apply current match now");
+        Notify("/ss apply | update — apply current match now");
         Notify("/ss now — preview match, do not apply");
         Notify("/ss pause [seconds] — pause all rules; 120 = 2 min");
         Notify("/ss resume — resume rules");
-        Notify("/ss auto | confirm — set apply mode");
+        Notify("/ss auto | notifications | selector | off — set handling");
         Notify("/ss zone — print current place");
         Notify("/ss config — settings");
     }
@@ -364,6 +398,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         if (!Configuration.Enabled || paused || !ClientState.IsLoggedIn) return;
+        if (Configuration.ApplyMode == ApplyMode.Off) return;
 
         var snap = engine.Snapshot();
         var changed = snap.Fingerprint != lastFingerprint;
@@ -383,6 +418,8 @@ public sealed class Plugin : IDalamudPlugin
     private void Evaluate(bool forceNotice = false, bool fromEvent = false)
     {
         lastEval = DateTime.Now;
+        if (Configuration.ApplyMode == ApplyMode.Off) return;
+
         var rule = engine.FindMatch();
         var id = rule?.Id;
         if (id != pendingRuleId)
@@ -395,15 +432,12 @@ public sealed class Plugin : IDalamudPlugin
         {
             TryRevert();
             lastCommandRuleId = null;
+            lastSelectorKey = null;
+            selectorWindow.Hide();
             return;
         }
 
-        if (!fromEvent && Configuration.MinMatchSeconds > 0
-            && (DateTime.Now - pendingSince).TotalSeconds < Configuration.MinMatchSeconds
-            && lastMatchedRuleId != rule.Id)
-            return;
-
-        if (fromEvent && Configuration.MinMatchSeconds > 0
+        if (Configuration.MinMatchSeconds > 0
             && (DateTime.Now - pendingSince).TotalSeconds < Configuration.MinMatchSeconds
             && lastMatchedRuleId != rule.Id)
             return;
@@ -416,10 +450,28 @@ public sealed class Plugin : IDalamudPlugin
 
         if (!changed && !dueCommand && !forceNotice) return;
 
+        if (Configuration.ApplyMode == ApplyMode.Selector)
+        {
+            var matches = engine.FindMatches();
+            var key = string.Join("|", matches.ConvertAll(r => r.Id));
+            if (forceNotice || key != lastSelectorKey)
+            {
+                lastSelectorKey = key;
+                selectorWindow.Show(matches);
+                if (rule.NotifyIfNotApplied)
+                    Notify($"Match [{rule.Name}] — pick in selector");
+            }
+            return;
+        }
+
         if (Configuration.ApplyMode == ApplyMode.Confirm)
         {
             if (changed || forceNotice)
+            {
                 Notify($"Match [{rule.Name}] — /ss apply");
+                if (Configuration.ConfirmPing)
+                    GameSounds.Play(Configuration.NotifySound);
+            }
             lastMatchedRuleId = rule.Id;
             if (dueCommand && rule.HasCommand)
                 TrySendRuleCommand(rule, force: false, allowSelf: false);
@@ -450,7 +502,7 @@ public sealed class Plugin : IDalamudPlugin
 
         lastAppliedComment = previous.FallbackComment;
         lastAppliedStatus = previous.FallbackStatus;
-        lastAppliedCommand = string.Empty;
+        lastAppliedCommand = previous.FallbackCommand ?? string.Empty;
         lastApply = DateTime.Now;
 
         if (previous.ChangeFallbackComment && !string.IsNullOrWhiteSpace(previous.FallbackComment))
@@ -458,16 +510,31 @@ public sealed class Plugin : IDalamudPlugin
         var statusCmd = ChatSender.ToStatusCommand(previous.FallbackStatus);
         if (statusCmd is not null)
             ChatSender.TrySendCommand(statusCmd);
+        if (!string.IsNullOrWhiteSpace(previous.FallbackCommand))
+        {
+            var fb = previous.FallbackCommand.Trim();
+            if (!fb.StartsWith('/')) fb = "/" + fb;
+            if (!IsSelfCommand(fb, out _))
+                ChatSender.TrySendCommand(fb);
+        }
         Notify($"Applied [{previous.Name} fallback]");
     }
 
     private void Notify(string message)
     {
-        if (!Configuration.NotifyInChat) return;
-        Chat.Print(new XivChatEntry
+        if (Configuration.ApplyMode == ApplyMode.Off) return;
+        if (Configuration.NotifyInChat)
         {
-            Type = XivChatType.Debug,
-            Message = new SeStringBuilder().AddUiForeground("[Status Shift] ", 548).AddText(message).BuiltString,
-        });
+            Chat.Print(new XivChatEntry
+            {
+                Type = XivChatType.Debug,
+                Message = new SeStringBuilder().AddUiForeground("[Status Shift] ", 548).AddText(message).BuiltString,
+            });
+        }
+        if (Configuration.NotifyWithToast)
+        {
+            try { Toast.ShowNormal(message); }
+            catch { /* ignore */ }
+        }
     }
 }
