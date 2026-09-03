@@ -1,14 +1,19 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Bindings.ImGui;
+using Lumina.Excel.Sheets;
 
 namespace StatusShift.Windows;
 
 public partial class MainWindow
 {
     private int chipKind;
-    private int chipState;
     private string chipValue = string.Empty;
+    private string chipSearch = string.Empty;
     private string shareMsg = string.Empty;
+    private static List<string>? worldOptions;
+    private static List<string>? jobOptions;
 
     private static readonly string[] ChipKinds =
     [
@@ -30,16 +35,10 @@ public partial class MainWindow
         ImGui.SetNextItemWidth(130);
         ImGui.Combo("##chipkind", ref chipKind, ChipKinds, ChipKinds.Length);
         ImGui.SameLine();
-        if ((ChipKind)chipKind == ChipKind.State)
-        {
-            ImGui.SetNextItemWidth(160);
-            ImGui.Combo("##chipstate", ref chipState, StateNames, StateNames.Length);
-        }
-        else
-        {
-            ImGui.SetNextItemWidth(160);
-            ImGui.InputTextWithHint("##chipval", FieldHint(), ref chipValue, 64);
-        }
+        DrawChipPicker();
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(140);
+        ImGui.InputTextWithHint("##chipval", FieldHint(), ref chipValue, 64);
         ImGui.SameLine();
         if (ImGui.Button("+ Current")) FillCurrent();
         ImGui.SameLine();
@@ -55,7 +54,102 @@ public partial class MainWindow
             ImGui.TextDisabled(shareMsg);
     }
 
-    private void DrawChipRow(Configuration cfg, System.Collections.Generic.List<RuleChip> chips)
+    private void DrawChipPicker()
+    {
+        var kind = (ChipKind)chipKind;
+        var options = OptionsFor(kind);
+        ImGui.SetNextItemWidth(170);
+        if (options.Count == 0)
+        {
+            ImGui.TextDisabled("type or + Current");
+            return;
+        }
+
+        var preview = string.IsNullOrEmpty(chipValue) ? "(pick)" : chipValue;
+        if (!ImGui.BeginCombo("##chipopt", preview))
+            return;
+
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##chipsearch", "Search", ref chipSearch, 32);
+        foreach (var item in options)
+        {
+            if (!string.IsNullOrWhiteSpace(chipSearch)
+                && !item.Contains(chipSearch, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (ImGui.Selectable(item, item.Equals(chipValue, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (item.StartsWith("Current:", StringComparison.OrdinalIgnoreCase))
+                    FillCurrent();
+                else
+                    chipValue = item;
+            }
+        }
+        ImGui.EndCombo();
+    }
+
+    private List<string> OptionsFor(ChipKind kind)
+    {
+        var current = CurrentValue(kind);
+        var list = new List<string>();
+        if (!string.IsNullOrWhiteSpace(current))
+            list.Add("Current: " + current);
+
+        switch (kind)
+        {
+            case ChipKind.World:
+                list.AddRange(WorldOptions());
+                break;
+            case ChipKind.Job:
+                list.AddRange(JobOptions());
+                break;
+            case ChipKind.State:
+                list.AddRange(StateNames);
+                break;
+            case ChipKind.NearbyPlayer:
+                list.AddRange(LiveLook.Capture(plugin.Configuration.NearbyRange).NearbyPlayers);
+                break;
+            case ChipKind.Duty:
+                list.Add("any");
+                break;
+        }
+        return list;
+    }
+
+    private static List<string> WorldOptions()
+    {
+        if (worldOptions is not null) return worldOptions;
+        worldOptions = [];
+        var sheet = Plugin.DataManager.GetExcelSheet<World>();
+        if (sheet is null) return worldOptions;
+        foreach (var row in sheet)
+        {
+            if (row.RowId == 0) continue;
+            var name = row.Name.ToString();
+            if (string.IsNullOrWhiteSpace(name) || name.StartsWith("Dev", StringComparison.Ordinal)) continue;
+            worldOptions.Add(name);
+        }
+        worldOptions.Sort(StringComparer.OrdinalIgnoreCase);
+        return worldOptions;
+    }
+
+    private static List<string> JobOptions()
+    {
+        if (jobOptions is not null) return jobOptions;
+        jobOptions = [];
+        var sheet = Plugin.DataManager.GetExcelSheet<ClassJob>();
+        if (sheet is null) return jobOptions;
+        foreach (var row in sheet)
+        {
+            if (row.RowId == 0) continue;
+            var abbr = row.Abbreviation.ToString();
+            if (string.IsNullOrWhiteSpace(abbr) || abbr.Length > 4) continue;
+            jobOptions.Add(abbr);
+        }
+        jobOptions.Sort(StringComparer.OrdinalIgnoreCase);
+        return jobOptions;
+    }
+
+    private void DrawChipRow(Configuration cfg, List<RuleChip> chips)
     {
         chips ??= [];
         if (chips.Count == 0)
@@ -87,17 +181,11 @@ public partial class MainWindow
         }
     }
 
-    private void FillCurrent()
+    private string CurrentValue(ChipKind kind)
     {
-        var kind = (ChipKind)chipKind;
-        if (kind == ChipKind.State)
-        {
-            chipValue = StateNames[Math.Clamp(chipState, 0, StateNames.Length - 1)];
-            return;
-        }
         var snap = plugin.Snapshot();
         var look = LiveLook.Capture(plugin.Configuration.NearbyRange);
-        chipValue = kind switch
+        return kind switch
         {
             ChipKind.World => snap.WorldName,
             ChipKind.Zone => snap.TerritoryName,
@@ -110,16 +198,19 @@ public partial class MainWindow
             ChipKind.Mount => look.MountName,
             ChipKind.Emote => look.EmoteName,
             ChipKind.NearbyPlayer => look.NearbyPlayers.Count > 0 ? look.NearbyPlayers[0] : string.Empty,
+            ChipKind.State => snap.Activities.Count > 0 ? snap.Activities.First().ToString() : string.Empty,
             _ => snap.TerritoryName,
         };
     }
 
+    private void FillCurrent() => chipValue = CurrentValue((ChipKind)chipKind);
+
     private void AddChip(Configuration cfg, StatusRule rule, bool and)
     {
         var kind = (ChipKind)chipKind;
-        var value = kind == ChipKind.State
-            ? StateNames[Math.Clamp(chipState, 0, StateNames.Length - 1)]
-            : chipValue.Trim();
+        var value = chipValue.Trim();
+        if (value.StartsWith("Current:", StringComparison.OrdinalIgnoreCase))
+            value = value[8..].Trim();
         if (value.Length == 0 && kind is not ChipKind.Duty) return;
         var list = and ? rule.AndChips : rule.OrChips;
         list.Add(new RuleChip { Kind = kind, Value = value.Length == 0 ? "any" : value });
@@ -130,14 +221,15 @@ public partial class MainWindow
 
     private string FieldHint() => (ChipKind)chipKind switch
     {
-        ChipKind.World => "World name",
-        ChipKind.Job => "Job abbr",
+        ChipKind.World => "or type a world",
+        ChipKind.Job => "or type a job abbr",
         ChipKind.NearbyPlayer => "First Last or First Last@World",
         ChipKind.Emote => "emote name contains",
         ChipKind.Mount => "mount name contains",
         ChipKind.Regex => "regex pattern",
         ChipKind.Residence => "ward / plot / district",
         ChipKind.Apartment => "apartment summary",
-        _ => "contains",
+        ChipKind.State => "or pick a state",
+        _ => "contains / custom",
     };
 }
