@@ -7,7 +7,15 @@ public partial class MainWindow
 {
     private void DrawRule(Configuration cfg, StatusRule rule, ref StatusRule? remove)
     {
+        if (ImGui.Button("X"))
+        {
+            editorOpen = false;
+            selectedRuleId = null;
+            return;
+        }
+        Hint("Close editor.");
         DrawRuleMeta(cfg, rule);
+        DrawChips(cfg, rule);
 
         if (ImGui.TreeNode("At schedule"))
         {
@@ -16,20 +24,10 @@ public partial class MainWindow
             ImGui.TreePop();
         }
 
-        if (ImGui.TreeNode("If location"))
+        if (ImGui.TreeNode("Legacy location / job / state"))
         {
             DrawLocation(cfg, rule);
-            ImGui.TreePop();
-        }
-
-        if (ImGui.TreeNode("If job"))
-        {
             DrawJob(cfg, rule);
-            ImGui.TreePop();
-        }
-
-        if (ImGui.TreeNode("If state"))
-        {
             DrawStates(cfg, rule);
             ImGui.TreePop();
         }
@@ -70,7 +68,7 @@ public partial class MainWindow
             rule.Command = cmd;
             cfg.Save();
         }
-        Hint("Optional. /sit is fine. /ss apply runs once when this rule starts matching. /ss pause and mode changes are blocked. Rerun never repeats /ss.");
+        Hint("Optional. /sit is fine. /ss apply runs once when this rule starts matching.");
         if (!string.IsNullOrWhiteSpace(rule.Command))
         {
             var rerun = rule.RerunCommand;
@@ -79,7 +77,6 @@ public partial class MainWindow
                 rule.RerunCommand = rerun;
                 cfg.Save();
             }
-            Hint("Off or 0 = run once when the rule starts matching.");
             if (rule.RerunCommand)
             {
                 var every = rule.CommandIntervalSeconds;
@@ -89,7 +86,6 @@ public partial class MainWindow
                     rule.CommandIntervalSeconds = Math.Max(0, every);
                     cfg.Save();
                 }
-                Hint("0 = use the Settings check interval.");
             }
         }
 
@@ -105,25 +101,13 @@ public partial class MainWindow
             }
             cfg.Save();
         }
-        Hint("Off by default. Your search comment is a character intro.");
         if (rule.ChangeSearchComment)
         {
             var comment = rule.SearchComment;
             if (ImGui.InputText("While this rule matches", ref comment, 192)) { rule.SearchComment = comment; cfg.Save(); }
-            if (!rule.Sticky)
-            {
-                var fbc = rule.FallbackComment;
-                if (ImGui.InputText("When it no longer matches", ref fbc, 192))
-                {
-                    rule.FallbackComment = fbc;
-                    rule.ChangeFallbackComment = !string.IsNullOrWhiteSpace(fbc);
-                    cfg.Save();
-                }
-            }
-            ImGui.TextDisabled("Tokens: {zone} {region} {job} {world} {home} {ward} {plot} {time}");
         }
 
-        if (ImGui.Button("Copy rule"))
+        if (ImGui.Button("Copy rule JSON"))
         {
             ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
             importMsg = $"Copied {rule.Name}.";
