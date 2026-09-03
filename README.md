@@ -1,55 +1,88 @@
 # StatusShift
 
-Dalamud plugin that shifts FFXIV **search comment**, **online status**, and optional **commands** from zone, duty, activity, job, world, and schedule.
+StatusShift is a Dalamud plugin for Final Fantasy XIV. It changes your **online status** and optional **search comment** from simple rules: where you are, what you are doing, which job you are on, and when the clock says so.
+
+Highest priority matching rule wins. Everything else stays put until a rule says otherwise.
+
+## What it is for
+
+Typical uses:
+
+- Busy while in a duty, Online when you leave
+- Role-playing on a schedule (weekend evenings, venue hours)
+- A different status on a specific world or in a house / apartment
+- A fallback rule so you are never left on the wrong status
+
+Rules can also run a slash command when they match, and can restore a previous status when they stop matching.
 
 ## Install
 
-### A. Dev plugin (DLL)
+Install from the **Dalamud plugin installer** (`/xlplugins`) when StatusShift is listed there.
 
-1. Build Debug on your PC, **or** download the `StatusShift` artifact from GitHub Actions.
-2. `/xlsettings` → Experimental → Dev Plugins → add the path to `StatusShift.dll`.
-3. Enable it. Reload with `/xlplugins`.
+The plugin icon is `images/icon.png` (512×512).
 
-Typical local path after a Debug build:
+## Quick start
 
-`...\\StatusShift\\StatusShift\\bin\\x64\\Debug\\StatusShift\\StatusShift.dll`
+1. Open **Status Shift** with `/ss` or from the plugin installer.
+2. Add a rule. Give it a name and a priority (higher number wins).
+3. Set **During schedule** if it should only run at certain times.
+4. Add **If these conditions** with AND / OR chips (world, zone, job, activity, and so on).
+5. Set **Then** to the online status you want. Optionally add a search comment or a slash command.
+6. Choose what happens when the rule stops matching: **revert** to another status, or **keep** what this rule set.
+7. Turn the rule **On**.
 
-### B. Custom plugin repo (JSON) — repo must be **public**
+The header shows the current match. Click it to edit that rule. Use **Check Now** to apply immediately.
 
-1. Make the repo public, or host `repo.json` + the zip somewhere public.
-2. Create a GitHub Release and attach `StatusShift.zip` from Actions (the workflow does this on `release` publish).
-3. `/xlsettings` → Experimental → Custom Plugin Repositories → add:
+## Handling modes
 
-```
-https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json
-```
+Set in Settings, or with `/ss`:
 
-4. Save, then `/xlplugins` and install StatusShift.
-
-Official installer icon is `images/icon.png` (512×512).
+| Mode | What it does |
+| --- | --- |
+| Notifications | Tells you a rule matched. Apply with `/ss apply` or `/ss update`. |
+| Selector | Shows matching rules. Click one to apply. |
+| Auto | Applies the highest matching rule after the cooldown. |
+| Off | Does not check or notify. |
 
 ## Commands
 
-`/statusshift` `/ss` `/ss apply` `/ss update` `/ss pause` `/ss resume` `/ss now` `/ss zone` `/ss config`
+| Command | Action |
+| --- | --- |
+| `/ss` or `/statusshift` | Open the main window |
+| `/ss apply` or `/ss update` | Apply the current match |
+| `/ss now` | Preview the match, do not apply |
+| `/ss pause [seconds]` | Pause rules (`120` = two minutes) |
+| `/ss resume` | Resume |
+| `/ss auto` `/ss notifications` `/ss selector` `/ss off` | Set handling mode |
+| `/ss zone` | Print current place and job |
+| `/ss config` | Open Settings |
+| `/ss help` | Command list |
 
-Handling: `/ss auto` `/ss notifications` `/ss selector` `/ss off`
+## Rules in short
 
-## Rules
+- **Priority** — higher number wins when more than one rule matches.
+- **Category** — optional folder in the left list. A character filter also appears under Characters.
+- **Schedule** — Always, Daily, Weekly, One Time, or Custom. Times are 24-hour `HH:mm`. Dates are `YYYY-MM-DD`.
+- **Conditions** — AND chips must all match. OR chips need one match. Empty lists mean “any.”
+- **Then** — online status (or leave it alone), optional slash command, optional search comment.
+- **Repeat command** — run the slash command once, or every N seconds (`0` uses the Settings check interval).
+- **When it ends** — revert to another status / comment / command, or keep what this rule set.
 
-Highest priority wins.
+Search comment tokens: `{zone}` `{region}` `{job}` `{world}` `{home}` `{ward}` `{plot}` `{time}`.
 
-- Schedule: Always, Daily, Weekly, One Time, Custom (24-hour `HH:mm`, dates `YYYY-MM-DD`)
-- AND/OR chips: world, zone, region, residence, job, nearby player, emote, mount, state, contains, regex
-- Then set: online status (or leave alone), optional `/command`, optional search comment
-- Command rerun: once on match, or every N seconds (`0` uses Settings check interval)
-- Tokens: `{zone}` `{region}` `{job}` `{world}` `{home}` `{ward}` `{plot}` `{time}`
-- Share a rule as one-line `SS1.` code from the editor
+Share one rule from the editor as JSON or as an `SS1.` share code. Paste that with **Import Rule**. Settings can copy or replace the full ruleset.
 
-Handling modes: Off, Notifications, Selector, Auto.
+## Settings
+
+- Skip checks while in combat, dead, in duty, in a cutscene, occupied, between areas, targeting, targeted, or emoting.
+- Check interval and minimum match time.
+- Auto cooldown.
+- Chat, toast, and built-in game sound notifications.
+- Live analysis of the current job, place, and activity flags, plus which rules match.
 
 ## Build
 
-Needs Windows + .NET 10 + Dalamud.
+Windows, .NET 10, and Dalamud.
 
 ```
 dotnet build StatusShift.slnx -c Release
