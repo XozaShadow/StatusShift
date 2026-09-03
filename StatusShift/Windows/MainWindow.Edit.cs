@@ -45,8 +45,12 @@ public partial class MainWindow
             return;
         }
 
-        if (ImGui.BeginTable("edmeta", 4, ImGuiTableFlags.SizingStretchProp))
+        if (ImGui.BeginTable("edmeta", 4, ImGuiTableFlags.SizingFixedFit))
         {
+            ImGui.TableSetupColumn("on", ImGuiTableColumnFlags.WidthFixed, 44);
+            ImGui.TableSetupColumn("prio", ImGuiTableColumnFlags.WidthFixed, 52);
+            ImGui.TableSetupColumn("name", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn("cat", ImGuiTableColumnFlags.WidthFixed, 168);
             ImGui.TableNextColumn();
             var on = rule.Enabled;
             if (ImGui.Checkbox("On", ref on)) { rule.Enabled = on; cfg.Save(); plugin.RequestEval(); }
@@ -70,12 +74,23 @@ public partial class MainWindow
         ImGui.SetNextItemWidth(-1);
         if (ImGui.InputTextWithHint("##notes", "Notes", ref notes, 120)) { rule.Notes = notes; cfg.Save(); }
 
-        var ping = rule.NotifyIfNotApplied;
-        if (ImGui.Checkbox("Notify if rule applies, but is not applied", ref ping))
+        var chat = rule.NotifyChat;
+        var audible = rule.NotifyAudible;
+        if (ImGui.Checkbox("Chat", ref chat))
         {
-            rule.NotifyIfNotApplied = ping;
+            rule.NotifyChat = chat;
+            rule.NotifyIfNotApplied = rule.NotifyChat || rule.NotifyAudible;
             cfg.Save();
         }
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Audible", ref audible))
+        {
+            rule.NotifyAudible = audible;
+            rule.NotifyIfNotApplied = rule.NotifyChat || rule.NotifyAudible;
+            cfg.Save();
+        }
+        ImGui.SameLine();
+        ImGui.TextDisabled("Notify if this rule matches but is not applied");
 
         ImGui.Separator();
         var character = rule.CharacterFilter ?? string.Empty;
@@ -86,11 +101,9 @@ public partial class MainWindow
             cfg.Save();
         }
 
-        if (ImGui.TreeNodeEx("DURING SCHEDULE", ImGuiTreeNodeFlags.DefaultOpen))
-        {
-            DrawSchedule(cfg, rule);
-            ImGui.TreePop();
-        }
+        ImGui.Separator();
+        ImGui.TextColored(UiTheme.Teal, "DURING SCHEDULE");
+        DrawSchedule(cfg, rule);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "IF THESE CONDITIONS");
@@ -113,27 +126,27 @@ public partial class MainWindow
         }
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Amber, "THEN SET / RUN / UPDATE");
+        ImGui.TextColored(UiTheme.Teal, "THEN SET / RUN / UPDATE");
         DrawThen(cfg, rule, false);
 
         ImGui.Separator();
+        ImGui.TextColored(UiTheme.Teal, "WHEN THIS RULE STOPS MATCHING");
         var revert = rule.RevertWhenFalse;
-        if (ImGui.Checkbox("UNTIL RULE ENDS REVERT TO", ref revert))
+        if (ImGui.RadioButton("Revert to the values below", revert))
         {
-            rule.RevertWhenFalse = revert;
+            rule.RevertWhenFalse = true;
             cfg.Save();
         }
-        if (!rule.RevertWhenFalse)
+        ImGui.SameLine();
+        if (ImGui.RadioButton("Keep what this rule set", !revert))
         {
-            var sticky = true;
-            if (ImGui.Checkbox("AND REMAIN THIS WAY AFTER THE RULE ENDS", ref sticky) && !sticky)
-            {
-                rule.RevertWhenFalse = true;
-                cfg.Save();
-            }
+            rule.RevertWhenFalse = false;
+            cfg.Save();
         }
-        else
+        if (rule.RevertWhenFalse)
             DrawThen(cfg, rule, true);
+        else
+            ImGui.TextDisabled("Status, command, and comment stay until another rule changes them.");
 
         var io = ImGui.GetIO();
         var canDelete = io.KeyShift || io.KeyCtrl;
@@ -170,7 +183,7 @@ public partial class MainWindow
         if (!fallback && !string.IsNullOrWhiteSpace(rule.Command))
         {
             var rerun = rule.RerunCommand;
-            if (ImGui.Checkbox("Rerun every interval (s)", ref rerun))
+            if (ImGui.Checkbox("Repeat this /command every", ref rerun))
             {
                 rule.RerunCommand = rerun;
                 cfg.Save();
@@ -179,12 +192,14 @@ public partial class MainWindow
             {
                 ImGui.SameLine();
                 var every = rule.CommandIntervalSeconds;
-                ImGui.SetNextItemWidth(70);
+                ImGui.SetNextItemWidth(60);
                 if (ImGui.InputInt("##int", ref every))
                 {
                     rule.CommandIntervalSeconds = Math.Max(0, every);
                     cfg.Save();
                 }
+                ImGui.SameLine();
+                ImGui.TextUnformatted("s   (0 = check interval)");
             }
         }
 

@@ -10,7 +10,20 @@ public partial class StatusRule
     public List<RuleChip> OrChips { get; set; } = [];
     public string FallbackCommand { get; set; } = string.Empty;
     public bool NotifyIfNotApplied { get; set; }
+    public bool NotifyChat { get; set; } = true;
+    public bool NotifyAudible { get; set; }
     public int NotifySound { get; set; } = 1;
+
+    public string CharacterKey
+    {
+        get
+        {
+            var filter = (CharacterFilter ?? string.Empty).Trim();
+            if (filter.Length == 0) return string.Empty;
+            var at = filter.IndexOf('@');
+            return at < 0 ? filter : filter[..at].Trim();
+        }
+    }
 
     public bool HasLegacy =>
         ((Location?.Kind ?? LocationKind.Any) is not LocationKind.Any and not LocationKind.World)
