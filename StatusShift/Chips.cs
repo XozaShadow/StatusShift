@@ -4,7 +4,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace StatusShift;
 
@@ -104,83 +103,6 @@ internal static class ChipShare
         catch (Exception ex)
         {
             error = ex.Message;
-            return false;
-        }
-    }
-}
-
-internal static class ChipEval
-{
-    public static bool AllMatch(List<RuleChip> chips, GameSnapshot snap)
-    {
-        if (chips.Count == 0) return true;
-        foreach (var chip in chips)
-        {
-            if (!Matches(chip, snap)) return false;
-        }
-        return true;
-    }
-
-    public static bool AnyMatch(List<RuleChip> chips, GameSnapshot snap)
-    {
-        if (chips.Count == 0) return true;
-        foreach (var chip in chips)
-        {
-            if (Matches(chip, snap)) return true;
-        }
-        return false;
-    }
-
-    public static bool Matches(RuleChip chip, GameSnapshot snap)
-    {
-        var v = chip.Value?.Trim() ?? string.Empty;
-        if (v.Length == 0) return true;
-        return chip.Kind switch
-        {
-            ChipKind.World => snap.WorldName.Equals(v, StringComparison.OrdinalIgnoreCase)
-                              || snap.WorldName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Zone => snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Region => snap.RegionName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.ZoneType => snap.ZoneGroupName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Residence => snap.InResidence && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Apartment => snap.Housing.Kind == ResidenceKind.Apartment
-                                  && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Duty => snap.Activities.Contains(ActivityFlag.InDuty)
-                             && (v.Equals("any", StringComparison.OrdinalIgnoreCase)
-                                 || snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase)),
-            ChipKind.Job => snap.JobAbbr.Equals(v, StringComparison.OrdinalIgnoreCase)
-                            || snap.JobAbbr.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.NearbyPlayer => snap.NearbyPlayers.Exists(n =>
-                n.Equals(v, StringComparison.OrdinalIgnoreCase)
-                || n.StartsWith(v + "@", StringComparison.OrdinalIgnoreCase)
-                || n.Contains(v, StringComparison.OrdinalIgnoreCase)),
-            ChipKind.Emote => snap.EmoteName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Mount => snap.Mounted && snap.MountName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.State => Enum.TryParse<ActivityFlag>(v, true, out var flag) && snap.Activities.Contains(flag),
-            ChipKind.Contains => snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.RegionName.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.ZoneGroupName.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.MountName.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.EmoteName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Regex => SafeRegex(v, snap),
-            _ => true,
-        };
-    }
-
-    private static bool SafeRegex(string pattern, GameSnapshot snap)
-    {
-        try
-        {
-            var rx = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(40));
-            return rx.IsMatch(snap.TerritoryName)
-                   || rx.IsMatch(snap.RegionName)
-                   || rx.IsMatch(snap.ZoneGroupName)
-                   || rx.IsMatch(snap.Housing.Summary)
-                   || rx.IsMatch(snap.WorldName);
-        }
-        catch
-        {
             return false;
         }
     }
