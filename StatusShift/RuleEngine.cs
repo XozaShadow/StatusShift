@@ -25,7 +25,7 @@ internal sealed partial class RuleEngine(Configuration config)
         return config.Rules
             .Where(r => r.Enabled)
             .OrderByDescending(r => r.Priority)
-            .FirstOrDefault(r => Matches(r, ctx));
+            .FirstOrDefault(r => Matches(r, ctx) && ChipsOk(r, ctx));
     }
 
     public string ResolveComment(StatusRule rule)
@@ -181,7 +181,7 @@ internal sealed partial class RuleEngine(Configuration config)
 
     private static bool ScheduleMatches(StatusRule rule, DateTime now)
     {
-        var sched = rule.Schedule ?? new RuleSchedule();
+        var sched = rule.Schedule ??= new RuleSchedule();
         if (sched.Mode == ScheduleMode.Always && (rule.Days.Count > 0 || rule.TimeStart is not null || rule.TimeEnd is not null))
             return LegacyTimeMatches(rule, now);
 
