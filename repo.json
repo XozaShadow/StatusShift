@@ -5,8 +5,8 @@
     "Punchline": "Shift search comment and online status by zone, activity, and schedule.",
     "Description": "Rules change your search comment, online status, and optional commands from zone, duty, activity, job, world, and schedule.",
     "InternalName": "StatusShift",
-    "AssemblyVersion": "0.1.6.1",
-    "TestingAssemblyVersion": "0.1.6.1",
+    "AssemblyVersion": "0.1.6.2",
+    "TestingAssemblyVersion": "0.1.6.2",
     "RepoUrl": "https://github.com/XozaShadow/StatusShift",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
@@ -14,12 +14,19 @@
     "IsHide": false,
     "IsTestingExclusive": true,
     "DownloadCount": 0,
-    "LastUpdate": 1788556460,
+    "LastUpdate": 1788562084,
     "LoadPriority": 0,
     "IconUrl": "https://raw.githubusercontent.com/XozaShadow/StatusShift/main/images/icon.png",
-    "DownloadLinkInstall": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.6.1/StatusShift.zip",
-    "DownloadLinkUpdate": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.6.1/StatusShift.zip",
-    "DownloadLinkTesting": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.6.1/StatusShift.zip",
-    "Tags": ["status", "search", "comment", "roleplay", "schedule", "zone"]
+    "DownloadLinkInstall": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "DownloadLinkUpdate": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "DownloadLinkTesting": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
+    "Tags": [
+      "status",
+      "search",
+      "comment",
+      "roleplay",
+      "schedule",
+      "zone"
+    ]
   }
 ]
