@@ -23,6 +23,8 @@ public sealed record GameSnapshot(
     HashSet<ActivityFlag> Activities)
 {
     public bool InResidence => Housing.Kind != ResidenceKind.None;
+    public string DataCenterName { get; init; } = string.Empty;
+    public string ZoneTypeName => string.IsNullOrEmpty(ZoneGroupName) ? TerritoryName : ZoneGroupName;
 
     public string Fingerprint =>
         $"{TerritoryId}|{JobId}|{WorldId}|{Housing.Summary}|{Activities.Count}:{string.Join(',', Activities)}";
@@ -97,6 +99,13 @@ public sealed record GameSnapshot(
         var job = ps.IsLoaded ? ps.ClassJob : default;
         var world = ps.IsLoaded ? ps.CurrentWorld : default;
         var home = ps.IsLoaded ? ps.HomeWorld : default;
+        var dc = string.Empty;
+        try
+        {
+            if (world.IsValid)
+                dc = world.Value.DataCenter.Value.Name.ToString();
+        }
+        catch { /* ignore */ }
 
         return new GameSnapshot(
             Plugin.ClientState.TerritoryType,
@@ -110,7 +119,10 @@ public sealed record GameSnapshot(
             home.IsValid ? home.Value.Name.ToString() : "",
             housing,
             DateTime.Now,
-            flags);
+            flags)
+        {
+            DataCenterName = dc,
+        };
     }
 
     private static void AddLookFlags(HashSet<ActivityFlag> flags, IGameObject? player)
