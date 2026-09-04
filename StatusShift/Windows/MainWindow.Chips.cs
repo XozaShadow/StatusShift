@@ -14,21 +14,28 @@ public partial class MainWindow
     private string shareMsg = string.Empty;
     private static List<string>? worldOptions;
     private static List<string>? jobOptions;
+    private static List<string>? zoneOptions;
+    private static List<string>? dcOptions;
 
     private static readonly string[] ChipKinds =
     [
         "World", "Zone", "Region", "Zone type", "Residence", "Apartment", "Duty",
         "Job", "Nearby player", "Emote", "Mount", "State", "Contains", "Regex",
+        "Data center", "Property", "Tell from", "Chat", "Accessory", "Status", "Role",
     ];
 
     private static readonly string[] StateNames =
     [
-        "InDuty", "InCombat", "Crafting", "Gathering", "Mounted", "Flying", "Swimming",
-        "WatchingCutscene", "Dead", "InParty", "BoundByDuty", "Diving", "WeaponDrawn",
-        "WaitingForDutyFinder", "PvP", "PartyLeader", "InResidence", "Sitting", "Casting",
-        "Jumping", "Occupied", "Trading", "BetweenAreas", "Roleplaying",
-        "TargetingPlayer", "TargetingEnemy", "TargetedByPlayer", "HelmShown", "WeaponShown", "Walking",
+        "BetweenAreas", "BoundByDuty", "Carrying", "Casting", "Crafting", "Dead", "Diving",
+        "FashionAccessory", "Fishing", "Flying", "Gathering", "HelmShown", "InCombat", "InDuty",
+        "InParty", "InResidence", "InSanctuary", "Jumping", "Mounted", "Occupied", "PartyLeader",
+        "Performing", "PvP", "Roleplaying", "Sitting", "Swimming", "TargetedByPlayer",
+        "TargetingEnemy", "TargetingPlayer", "Trading", "UsingHousing", "WaitingForDutyFinder",
+        "Walking", "WatchingCutscene", "WeaponDrawn", "WeaponShown",
     ];
+
+    private static readonly string[] PropertyKinds =
+        ["Any", "House", "Apartment", "FC Apartment", "Subdivision"];
 
     private void DrawChips(Configuration cfg, StatusRule rule)
     {
@@ -42,14 +49,19 @@ public partial class MainWindow
         ImGui.SameLine();
         if (ImGui.Button("+ Current")) FillCurrent();
         ImGui.SameLine();
-        if (ImGui.Button("+AND")) AddChip(cfg, rule, true);
+        if (ImGui.Button("+AND")) AddChip(cfg, rule, 0);
         ImGui.SameLine();
-        if (ImGui.Button("+OR")) AddChip(cfg, rule, false);
+        if (ImGui.Button("+OR")) AddChip(cfg, rule, 1);
+        ImGui.SameLine();
+        if (ImGui.Button("+NOT")) AddChip(cfg, rule, 2);
 
         ImGui.TextDisabled("AND");
         DrawChipRow(cfg, rule.AndChips);
         ImGui.TextDisabled("OR");
         DrawChipRow(cfg, rule.OrChips);
+        ImGui.TextDisabled("NOT");
+        DrawChipRow(cfg, rule.NotChips);
+        ImGui.TextDisabled(plugin.ExplainRuleLine(rule));
         if (!string.IsNullOrEmpty(shareMsg))
             ImGui.TextDisabled(shareMsg);
     }
@@ -70,11 +82,14 @@ public partial class MainWindow
             return;
 
         ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##chipsearch", "Search", ref chipSearch, 32);
+        ImGui.InputTextWithHint("##chipsearch", "type 3+ letters", ref chipSearch, 32);
+        var q = chipSearch.Trim();
+        var longList = options.Count > 40;
         foreach (var item in options)
         {
-            if (!string.IsNullOrWhiteSpace(chipSearch)
-                && !item.Contains(chipSearch, StringComparison.OrdinalIgnoreCase))
+            if (longList && q.Length < 3 && !item.StartsWith("Current:", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (q.Length > 0 && !item.Contains(q, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (ImGui.Selectable(item, item.Equals(chipValue, StringComparison.OrdinalIgnoreCase)))
             {
@@ -102,14 +117,33 @@ public partial class MainWindow
             case ChipKind.Job:
                 list.AddRange(JobOptions());
                 break;
+            case ChipKind.Role:
+                list.AddRange(JobRoles.Names);
+                break;
             case ChipKind.State:
                 list.AddRange(StateNames);
+                break;
+            case ChipKind.Property:
+                list.AddRange(PropertyKinds);
+                break;
+            case ChipKind.DataCenter:
+                list.AddRange(DcOptions());
+                break;
+            case ChipKind.Zone:
+            case ChipKind.ZoneType:
+                list.AddRange(ZoneOptions());
                 break;
             case ChipKind.NearbyPlayer:
                 list.AddRange(LiveLook.Capture(plugin.Configuration.NearbyRange).NearbyPlayers);
                 break;
+            case ChipKind.Chat:
+                list.AddRange(ChatWatch.Channels);
+                break;
             case ChipKind.Duty:
                 list.Add("any");
+                break;
+            case ChipKind.Status:
+                list.AddRange(LiveLook.Capture(plugin.Configuration.NearbyRange).Statuses);
                 break;
         }
         return list;
@@ -147,6 +181,45 @@ public partial class MainWindow
         }
         jobOptions.Sort(StringComparer.OrdinalIgnoreCase);
         return jobOptions;
+    }
+
+    private static List<string> ZoneOptions()
+    {
+        if (zoneOptions is not null) return zoneOptions;
+        zoneOptions = [];
+        var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
+        if (sheet is null) return zoneOptions;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in sheet)
+        {
+            var name = row.PlaceName.Value.Name.ToString();
+            if (string.IsNullOrWhiteSpace(name) || !seen.Add(name)) continue;
+            zoneOptions.Add(name);
+        }
+        zoneOptions.Sort(StringComparer.OrdinalIgnoreCase);
+        return zoneOptions;
+    }
+
+    private static List<string> DcOptions()
+    {
+        if (dcOptions is not null) return dcOptions;
+        dcOptions = [];
+        try
+        {
+            var sheet = Plugin.DataManager.GetExcelSheet<WorldDCGroupType>();
+            if (sheet is not null)
+            {
+                foreach (var row in sheet)
+                {
+                    var name = row.Name.ToString();
+                    if (!string.IsNullOrWhiteSpace(name))
+                        dcOptions.Add(name);
+                }
+            }
+        }
+        catch { /* sheet name may differ */ }
+        dcOptions.Sort(StringComparer.OrdinalIgnoreCase);
+        return dcOptions;
     }
 
     private void DrawChipRow(Configuration cfg, List<RuleChip> chips)
@@ -190,29 +263,41 @@ public partial class MainWindow
             ChipKind.World => snap.WorldName,
             ChipKind.Zone => snap.TerritoryName,
             ChipKind.Region => snap.RegionName,
-            ChipKind.ZoneType => snap.ZoneGroupName,
+            ChipKind.ZoneType => snap.ZoneTypeName,
             ChipKind.Residence => snap.Housing.Summary,
             ChipKind.Apartment => snap.Housing.Summary,
+            ChipKind.Property => snap.Housing.Kind.ToString(),
             ChipKind.Duty => snap.TerritoryName,
             ChipKind.Job => snap.JobAbbr,
+            ChipKind.Role => snap.JobAbbr,
             ChipKind.Mount => look.MountName,
             ChipKind.Emote => look.EmoteName,
+            ChipKind.Accessory => look.AccessoryName,
             ChipKind.NearbyPlayer => look.NearbyPlayers.Count > 0 ? look.NearbyPlayers[0] : string.Empty,
             ChipKind.State => snap.Activities.Count > 0 ? snap.Activities.First().ToString() : string.Empty,
+            ChipKind.DataCenter => snap.DataCenterName,
+            ChipKind.TellFrom => ChatWatch.LastTellFrom,
+            ChipKind.Chat => ChatWatch.LastChatChannel,
+            ChipKind.Status => look.Statuses.Count > 0 ? look.Statuses[0] : string.Empty,
             _ => snap.TerritoryName,
         };
     }
 
     private void FillCurrent() => chipValue = CurrentValue((ChipKind)chipKind);
 
-    private void AddChip(Configuration cfg, StatusRule rule, bool and)
+    private void AddChip(Configuration cfg, StatusRule rule, int row)
     {
         var kind = (ChipKind)chipKind;
         var value = chipValue.Trim();
         if (value.StartsWith("Current:", StringComparison.OrdinalIgnoreCase))
             value = value[8..].Trim();
         if (value.Length == 0 && kind is not ChipKind.Duty) return;
-        var list = and ? rule.AndChips : rule.OrChips;
+        var list = row switch
+        {
+            1 => rule.OrChips,
+            2 => rule.NotChips,
+            _ => rule.AndChips,
+        };
         list.Add(new RuleChip { Kind = kind, Value = value.Length == 0 ? "any" : value });
         chipValue = string.Empty;
         cfg.Save();
@@ -223,13 +308,20 @@ public partial class MainWindow
     {
         ChipKind.World => "or type a world",
         ChipKind.Job => "or type a job abbr",
+        ChipKind.Role => "tank / healer / DoW…",
         ChipKind.NearbyPlayer => "First Last or First Last@World",
+        ChipKind.TellFrom => "First Last or First Last@World",
+        ChipKind.Chat => "channel or channel|text",
         ChipKind.Emote => "emote name contains",
         ChipKind.Mount => "mount name contains",
+        ChipKind.Accessory => "accessory name",
         ChipKind.Regex => "regex pattern",
         ChipKind.Residence => "ward / plot / district",
         ChipKind.Apartment => "apartment summary",
+        ChipKind.Property => "House / Apartment / FC / Sub",
+        ChipKind.DataCenter => "data center name",
         ChipKind.State => "or pick a state",
+        ChipKind.Status => "status effect name",
         _ => "contains / custom",
     };
 }
