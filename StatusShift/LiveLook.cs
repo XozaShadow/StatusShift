@@ -14,6 +14,8 @@ internal sealed class LiveLook
     public List<string> NearbyPlayers { get; } = [];
     public string MountName { get; init; } = string.Empty;
     public string EmoteName { get; init; } = string.Empty;
+    public string AccessoryName { get; init; } = string.Empty;
+    public string TargeterName { get; init; } = string.Empty;
     public bool Mounted { get; init; }
 
     public static LiveLook Capture(float range)
@@ -52,6 +54,7 @@ internal sealed class LiveLook
 
         var mount = string.Empty;
         var emote = string.Empty;
+        var targeter = string.Empty;
         var mounted = Plugin.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Mounted];
         try
         {
@@ -76,10 +79,31 @@ internal sealed class LiveLook
             Plugin.Log.Verbose(ex, "Mount read failed");
         }
 
+        try
+        {
+            var meEntity = player.EntityId;
+            var meObject = player.GameObjectId;
+            foreach (var obj in Plugin.ObjectTable)
+            {
+                if (obj is null || obj.EntityId == meEntity) continue;
+                if (obj.ObjectKind != ObjectKind.Pc) continue;
+                if (obj.TargetObjectId == meObject || obj.TargetObject?.EntityId == meEntity)
+                {
+                    targeter = obj.Name.TextValue;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Verbose(ex, "Targeter scan failed");
+        }
+
         return new LiveLook
         {
             MountName = mount,
             EmoteName = emote,
+            TargeterName = targeter,
             Mounted = mounted,
             Nearby = look.NearbyPlayers,
         };
