@@ -16,8 +16,10 @@ public partial class MainWindow
         }
 
         ImGui.TextColored(UiTheme.Amber, $"EDITING: P{rule.Priority}  {rule.Name}");
+        var rightPad = 48f;
+        var buttons = ImGui.CalcTextSize("Copy: JSON ShareCode Duplicate X").X + 72f;
         var avail = ImGui.GetContentRegionAvail().X;
-        ImGui.SameLine(Math.Max(220, avail - 220));
+        ImGui.SameLine(Math.Max(160f, avail - buttons - rightPad));
         ImGui.TextDisabled("Copy:");
         ImGui.SameLine();
         if (ImGui.SmallButton("JSON"))
@@ -45,6 +47,8 @@ public partial class MainWindow
             selectedRuleId = null;
             return;
         }
+        ImGui.SameLine();
+        ImGui.Dummy(new Vector2(rightPad, 1));
 
         if (ImGui.BeginTable("edmeta", 4, ImGuiTableFlags.SizingFixedFit))
         {
