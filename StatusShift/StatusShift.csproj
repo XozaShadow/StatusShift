@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.1.5.1</Version>
+    <Version>0.1.6.0</Version>
     <Author>XozaShadow</Author>
     <Name>StatusShift</Name>
     <Punchline>Shift search comment and online status by zone, activity, and schedule.</Punchline>
