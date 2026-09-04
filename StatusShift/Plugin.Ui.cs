@@ -12,13 +12,15 @@ public sealed partial class Plugin
         get
         {
             var v = typeof(Plugin).Assembly.GetName().Version;
-            return v is null ? "0.1.5.1" : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+            return v is null ? "0.1.6.1" : $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
         }
     }
 
     public List<StatusRule> CurrentMatches() => engine.FindMatches();
 
     public void OpenRule(string id) => mainWindow.OpenRule(id);
+
+    public string ExplainRuleLine(StatusRule rule) => engine.ExplainRule(rule);
 
     public void DuplicateRule(StatusRule rule)
     {
@@ -34,4 +36,15 @@ public sealed partial class Plugin
     }
 
     public void ShowSelector(List<StatusRule> matches) => selectorWindow.Show(matches);
+
+    public void MovePriority(StatusRule rule, int dir)
+    {
+        var ordered = Configuration.Rules.OrderByDescending(r => r.Priority).ToList();
+        var i = ordered.FindIndex(r => r.Id == rule.Id);
+        var j = i - dir;
+        if (i < 0 || j < 0 || j >= ordered.Count) return;
+        (ordered[i].Priority, ordered[j].Priority) = (ordered[j].Priority, ordered[i].Priority);
+        Configuration.Save();
+        RequestEval();
+    }
 }
