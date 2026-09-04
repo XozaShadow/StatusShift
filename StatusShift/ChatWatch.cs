@@ -1,5 +1,6 @@
 using System;
 using Dalamud.Game.Text;
+using Dalamud.Game.Text.SeStringHandling;
 
 namespace StatusShift;
 
@@ -18,13 +19,12 @@ internal static class ChatWatch
     public static void Attach() => Plugin.Chat.ChatMessage += OnChat;
     public static void Detach() => Plugin.Chat.ChatMessage -= OnChat;
 
-    private static void OnChat(IHandleableChatMessage message)
+    private static void OnChat(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
     {
-        var type = message.LogKind;
         var channel = ChannelName(type);
         if (channel.Length == 0) return;
-        var who = message.Sender.TextValue.Trim();
-        var text = message.Message.TextValue.Trim();
+        var who = sender.TextValue.Trim();
+        var text = message.TextValue.Trim();
         LastChatChannel = channel;
         LastChatSender = who;
         LastChatText = text;
