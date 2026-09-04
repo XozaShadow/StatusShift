@@ -10,7 +10,7 @@
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
     "IsHide": false,
-    "IsTestingExclusive": false,
+    "IsTestingExclusive": true,
     "IconUrl": "https://raw.githubusercontent.com/XozaShadow/StatusShift/main/images/icon.png",
     "DownloadLinkInstall": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
     "DownloadLinkUpdate": "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip",
