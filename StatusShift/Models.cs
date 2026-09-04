@@ -69,6 +69,12 @@ public enum ActivityFlag
     HelmShown = 27,
     WeaponShown = 28,
     Walking = 29,
+    Fishing = 30,
+    Performing = 31,
+    InSanctuary = 32,
+    Carrying = 33,
+    UsingHousing = 34,
+    FashionAccessory = 35,
 }
 
 public enum LocationKind
