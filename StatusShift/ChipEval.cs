@@ -8,7 +8,7 @@ internal static class ChipEval
 {
     public static bool AllMatch(List<RuleChip> chips, GameSnapshot snap, LiveLook look)
     {
-        if (chips.Count == 0) return true;
+        if (chips is null || chips.Count == 0) return true;
         foreach (var chip in chips)
         {
             if (!Matches(chip, snap, look)) return false;
@@ -18,12 +18,22 @@ internal static class ChipEval
 
     public static bool AnyMatch(List<RuleChip> chips, GameSnapshot snap, LiveLook look)
     {
-        if (chips.Count == 0) return true;
+        if (chips is null || chips.Count == 0) return true;
         foreach (var chip in chips)
         {
             if (Matches(chip, snap, look)) return true;
         }
         return false;
+    }
+
+    public static bool NoneMatch(List<RuleChip> chips, GameSnapshot snap, LiveLook look)
+    {
+        if (chips is null || chips.Count == 0) return true;
+        foreach (var chip in chips)
+        {
+            if (Matches(chip, snap, look)) return false;
+        }
+        return true;
     }
 
     public static bool Matches(RuleChip chip, GameSnapshot snap, LiveLook look)
@@ -36,7 +46,8 @@ internal static class ChipEval
                               || snap.WorldName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Zone => snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Region => snap.RegionName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.ZoneType => snap.ZoneGroupName.Contains(v, StringComparison.OrdinalIgnoreCase),
+            ChipKind.ZoneType => snap.ZoneTypeName.Contains(v, StringComparison.OrdinalIgnoreCase)
+                                 || snap.ZoneGroupName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Residence => snap.InResidence && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Apartment => snap.Housing.Kind == ResidenceKind.Apartment
                                   && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
@@ -58,8 +69,33 @@ internal static class ChipEval
                                  || snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase)
                                  || look.MountName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Regex => SafeRegex(v, snap),
+            ChipKind.DataCenter => snap.DataCenterName.Equals(v, StringComparison.OrdinalIgnoreCase)
+                                   || snap.DataCenterName.Contains(v, StringComparison.OrdinalIgnoreCase),
+            ChipKind.Property => PropertyMatch(v, snap),
+            ChipKind.TellFrom => ChatWatch.TellFrom(v),
+            ChipKind.Chat => ChatWatch.ChatMatches(v),
+            ChipKind.Accessory => look.AccessoryName.Contains(v, StringComparison.OrdinalIgnoreCase),
+            ChipKind.Status => look.Statuses.Exists(s => s.Contains(v, StringComparison.OrdinalIgnoreCase)),
+            ChipKind.Role => JobRoles.Matches(v, snap.JobAbbr),
             _ => true,
         };
+    }
+
+    private static bool PropertyMatch(string v, GameSnapshot snap)
+    {
+        if (!snap.InResidence) return false;
+        var kind = snap.Housing.Kind.ToString();
+        if (v.Equals("any", StringComparison.OrdinalIgnoreCase)) return true;
+        if (v.Equals("House", StringComparison.OrdinalIgnoreCase) || v.Equals("Residence", StringComparison.OrdinalIgnoreCase))
+            return snap.Housing.Kind == ResidenceKind.House;
+        if (v.Equals("Apartment", StringComparison.OrdinalIgnoreCase))
+            return snap.Housing.Kind == ResidenceKind.Apartment;
+        if (v.Contains("FC", StringComparison.OrdinalIgnoreCase))
+            return snap.Housing.Kind == ResidenceKind.Apartment;
+        if (v.Contains("Sub", StringComparison.OrdinalIgnoreCase))
+            return snap.Housing.Subdivision;
+        return snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase)
+               || kind.Contains(v, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool SafeRegex(string pattern, GameSnapshot snap)
@@ -71,7 +107,8 @@ internal static class ChipEval
                    || rx.IsMatch(snap.RegionName)
                    || rx.IsMatch(snap.ZoneGroupName)
                    || rx.IsMatch(snap.Housing.Summary)
-                   || rx.IsMatch(snap.WorldName);
+                   || rx.IsMatch(snap.WorldName)
+                   || rx.IsMatch(snap.DataCenterName);
         }
         catch
         {
