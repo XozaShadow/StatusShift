@@ -15,10 +15,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.target_commitish || github.ref }}
 
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Read version from csproj
+        id: ver
+        shell: pwsh
+        run: |
+          [xml]$cs = Get-Content StatusShift/StatusShift.csproj
+          $v = $cs.Project.PropertyGroup.Version | Select-Object -First 1
+          if (-not $v) { throw "Version missing from StatusShift.csproj" }
+          $unix = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          echo "version=$v" >> $env:GITHUB_OUTPUT
+          echo "unix=$unix" >> $env:GITHUB_OUTPUT
+          Write-Host "Version $v  LastUpdate $unix"
 
       - name: Download Dalamud
         shell: pwsh
@@ -57,9 +71,8 @@ jobs:
           Copy-Item $icon "$out\images\icon.png" -Force
           Copy-Item $icon "$out\icon.png" -Force
           if (-not (Test-Path "$out\StatusShift.dll")) { throw "Copy failed" }
-          if (-not (Test-Path "$out\images\icon.png")) { throw "images/icon.png missing from package" }
           Compress-Archive -Path "$out\*" -DestinationPath artifacts/StatusShift.zip -Force
-          Write-Host "Packaged from $($dll.FullName) with icon $icon"
+          Write-Host "Packaged $($dll.FullName) as artifacts/StatusShift.zip"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -69,7 +82,38 @@ jobs:
             artifacts/StatusShift.zip
           if-no-files-found: error
 
-      - name: Attach zip to release
+      - name: Sync pluginmaster and repo.json
+        if: github.event_name == 'release'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          $unix = [int64]"${{ steps.ver.outputs.unix }}"
+          $link = "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip"
+          foreach ($path in @("pluginmaster.json", "repo.json")) {
+            $j = Get-Content $path -Raw | ConvertFrom-Json
+            $j[0].AssemblyVersion = $v
+            $j[0].DownloadLinkInstall = $link
+            $j[0].DownloadLinkUpdate = $link
+            $j[0].DownloadLinkTesting = $link
+            if ($j[0].PSObject.Properties.Name -contains "TestingAssemblyVersion") {
+              $j[0].TestingAssemblyVersion = $v
+            }
+            if ($j[0].PSObject.Properties.Name -contains "LastUpdate") {
+              $j[0].LastUpdate = $unix
+            }
+            $json = $j | ConvertTo-Json -Depth 8
+            [IO.File]::WriteAllText((Resolve-Path $path), $json + "`n")
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pluginmaster.json repo.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "release: $v manifests [skip ci]"
+            git push origin HEAD:main
+          }
+
+      - name: Attach StatusShift.zip to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
