@@ -41,17 +41,30 @@ internal sealed partial class RuleEngine
         sb.Append($"P{winner.Priority} {winner.Name}");
         var andN = winner.AndChips?.Count ?? 0;
         var orN = winner.OrChips?.Count ?? 0;
+        var notN = winner.NotChips?.Count ?? 0;
         if (andN > 0) sb.Append($" · AND x{andN}");
         if (orN > 0) sb.Append($" · OR x{orN}");
+        if (notN > 0) sb.Append($" · NOT x{notN}");
         if (matches.Count > 1) sb.Append($" · +{matches.Count - 1} lower");
         return sb.ToString();
+    }
+
+    public string ExplainRule(StatusRule rule)
+    {
+        var ctx = Snapshot();
+        var look = LiveLook.Capture(config.NearbyRange);
+        if (!rule.Enabled) return "Off.";
+        if (!ChipsOk(rule, ctx)) return "A condition chip is not matching.";
+        if (!Matches(rule, ctx)) return "Schedule, character, or leftover legacy filter is blocking this.";
+        return "This rule matches.";
     }
 
     internal static bool ChipsOk(StatusRule rule, GameSnapshot ctx)
     {
         var look = LiveLook.Capture(80f);
         return ChipEval.AllMatch(rule.AndChips ?? [], ctx, look)
-               && ChipEval.AnyMatch(rule.OrChips ?? [], ctx, look);
+               && ChipEval.AnyMatch(rule.OrChips ?? [], ctx, look)
+               && ChipEval.NoneMatch(rule.NotChips ?? [], ctx, look);
     }
 
     public bool Skipped(GameSnapshot ctx, out string reason)

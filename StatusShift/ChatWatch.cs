@@ -1,5 +1,4 @@
 using System;
-using Dalamud.Game.Chat;
 using Dalamud.Game.Text;
 
 namespace StatusShift;
@@ -35,6 +34,31 @@ internal static class ChatWatch
             LastTellFrom = who;
             LastTellAt = DateTime.Now;
         }
+    }
+
+    public static bool TellFrom(string value)
+    {
+        if (!TellFresh) return false;
+        value = (value ?? string.Empty).Trim();
+        if (value.Length == 0) return true;
+        return LastTellFrom.Equals(value, StringComparison.OrdinalIgnoreCase)
+               || LastTellFrom.StartsWith(value + "@", StringComparison.OrdinalIgnoreCase)
+               || LastTellFrom.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool ChatMatches(string value)
+    {
+        if (!ChatFresh) return false;
+        value = (value ?? string.Empty).Trim();
+        if (value.Length == 0) return true;
+        var bar = value.IndexOf('|');
+        var channel = bar < 0 ? value : value[..bar].Trim();
+        var text = bar < 0 ? string.Empty : value[(bar + 1)..].Trim();
+        if (channel.Length > 0 && !LastChatChannel.Equals(channel, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (text.Length > 0 && !LastChatText.Contains(text, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return true;
     }
 
     public static string ChannelName(XivChatType type) => type switch
@@ -73,8 +97,8 @@ internal static class ChatWatch
 
     public static readonly string[] Channels =
     [
-        "Alliance", "Cross World Linkshell 1", "Custom Emote", "Echo", "Emote", "Free Company",
-        "Linkshell 1", "Linkshell 2", "Linkshell 3", "Novice Network", "Party", "PvP Team",
+        "Alliance", "Custom Emote", "Echo", "Emote", "Free Company",
+        "Linkshell 1", "Novice Network", "Party", "PvP Team",
         "Say", "Shout", "Tell", "Tell Out", "Yell",
     ];
 }

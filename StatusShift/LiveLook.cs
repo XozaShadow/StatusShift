@@ -12,6 +12,7 @@ namespace StatusShift;
 internal sealed class LiveLook
 {
     public List<string> NearbyPlayers { get; } = [];
+    public List<string> Statuses { get; } = [];
     public string MountName { get; init; } = string.Empty;
     public string EmoteName { get; init; } = string.Empty;
     public string AccessoryName { get; init; } = string.Empty;
@@ -52,8 +53,25 @@ internal sealed class LiveLook
             Plugin.Log.Verbose(ex, "Nearby scan failed");
         }
 
+        try
+        {
+            if (player is IBattleChara battle)
+            {
+                foreach (var st in battle.StatusList)
+                {
+                    var n = st.GameData.Value.Name.ToString();
+                    if (!string.IsNullOrWhiteSpace(n))
+                        look.Statuses.Add(n);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Verbose(ex, "Status list failed");
+        }
+
         var mount = string.Empty;
-        var emote = string.Empty;
+        var accessory = string.Empty;
         var targeter = string.Empty;
         var mounted = Plugin.Condition[Dalamud.Game.ClientState.Conditions.ConditionFlag.Mounted];
         try
@@ -102,12 +120,14 @@ internal sealed class LiveLook
         return new LiveLook
         {
             MountName = mount,
-            EmoteName = emote,
+            AccessoryName = accessory,
             TargeterName = targeter,
             Mounted = mounted,
             Nearby = look.NearbyPlayers,
+            StatusSeed = look.Statuses,
         };
     }
 
     public List<string>? Nearby { init { if (value is not null) NearbyPlayers.AddRange(value); } }
+    public List<string>? StatusSeed { init { if (value is not null) Statuses.AddRange(value); } }
 }
