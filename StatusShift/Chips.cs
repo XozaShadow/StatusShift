@@ -23,6 +23,13 @@ public enum ChipKind
     State = 11,
     Contains = 12,
     Regex = 13,
+    DataCenter = 14,
+    Property = 15,
+    TellFrom = 16,
+    Chat = 17,
+    Accessory = 18,
+    Status = 19,
+    Role = 20,
 }
 
 [Serializable]
@@ -46,6 +53,13 @@ public class RuleChip
         ChipKind.State => Value,
         ChipKind.Contains => $"~ {Value}",
         ChipKind.Regex => $"/{Value}/",
+        ChipKind.DataCenter => $"DC {Value}",
+        ChipKind.Property => $"Prop {Value}",
+        ChipKind.TellFrom => $"Tell {Value}",
+        ChipKind.Chat => $"Chat {Value}",
+        ChipKind.Accessory => $"Acc {Value}",
+        ChipKind.Status => $"Status {Value}",
+        ChipKind.Role => $"Role {Value}",
         _ => Value,
     };
 }

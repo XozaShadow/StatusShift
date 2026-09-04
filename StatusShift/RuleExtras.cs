@@ -8,6 +8,9 @@ public partial class StatusRule
 {
     public List<RuleChip> AndChips { get; set; } = [];
     public List<RuleChip> OrChips { get; set; } = [];
+    public List<RuleChip> NotChips { get; set; } = [];
+    public int CommandDelaySeconds { get; set; }
+    public string CommentTemplate { get; set; } = string.Empty;
     public string FallbackCommand { get; set; } = string.Empty;
     public bool NotifyIfNotApplied { get; set; }
     public bool NotifyChat { get; set; } = true;

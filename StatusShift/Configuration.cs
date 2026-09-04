@@ -10,7 +10,7 @@ public partial class Configuration : IPluginConfiguration
     public int Version { get; set; } = 7;
 
     public bool Enabled { get; set; } = true;
-    public ApplyMode ApplyMode { get; set; } = ApplyMode.Confirm;
+    public ApplyMode ApplyMode { get; set; } = ApplyMode.Selector;
     public int CooldownSeconds { get; set; } = 15;
     public int PollSeconds { get; set; } = 10;
     public int MinMatchSeconds { get; set; }
