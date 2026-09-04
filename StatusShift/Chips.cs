@@ -54,7 +54,9 @@ public class RuleChip
         ChipKind.Contains => $"~ {Value}",
         ChipKind.Regex => $"/{Value}/",
         ChipKind.DataCenter => $"DC {Value}",
-        ChipKind.Property => $"Prop {Value}",
+        ChipKind.Property => HousingChip.TryParse(Value, out _, out _, out _, out _, out _, out _)
+            ? HousingChip.FormatLabel(Value)
+            : $"House {Value}",
         ChipKind.TellFrom => $"Tell {Value}",
         ChipKind.Chat => $"Chat {Value}",
         ChipKind.Accessory => $"Acc {Value}",

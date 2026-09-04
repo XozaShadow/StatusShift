@@ -54,7 +54,8 @@ internal static class ChipEval
             ChipKind.Duty => snap.Activities.Contains(ActivityFlag.InDuty)
                              && (v.Equals("any", StringComparison.OrdinalIgnoreCase)
                                  || snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase)),
-            ChipKind.Job => snap.JobAbbr.Equals(v, StringComparison.OrdinalIgnoreCase)
+            ChipKind.Job => JobRoles.Matches(v, snap.JobAbbr)
+                            || snap.JobAbbr.Equals(v, StringComparison.OrdinalIgnoreCase)
                             || snap.JobAbbr.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.NearbyPlayer => look.NearbyPlayers.Exists(n =>
                 n.Equals(v, StringComparison.OrdinalIgnoreCase)
@@ -83,19 +84,19 @@ internal static class ChipEval
 
     private static bool PropertyMatch(string v, GameSnapshot snap)
     {
+        if (HousingChip.TryParse(v, out _, out _, out _, out _, out _, out _))
+            return HousingChip.Matches(v, snap.Housing);
         if (!snap.InResidence) return false;
-        var kind = snap.Housing.Kind.ToString();
         if (v.Equals("any", StringComparison.OrdinalIgnoreCase)) return true;
         if (v.Equals("House", StringComparison.OrdinalIgnoreCase) || v.Equals("Residence", StringComparison.OrdinalIgnoreCase))
             return snap.Housing.Kind == ResidenceKind.House;
         if (v.Equals("Apartment", StringComparison.OrdinalIgnoreCase))
-            return snap.Housing.Kind == ResidenceKind.Apartment;
+            return snap.Housing.IsWingApartment;
         if (v.Contains("FC", StringComparison.OrdinalIgnoreCase))
-            return snap.Housing.Kind == ResidenceKind.Apartment;
+            return snap.Housing.IsFcApartment;
         if (v.Contains("Sub", StringComparison.OrdinalIgnoreCase))
             return snap.Housing.Subdivision;
-        return snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase)
-               || kind.Contains(v, StringComparison.OrdinalIgnoreCase);
+        return snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool SafeRegex(string pattern, GameSnapshot snap)
