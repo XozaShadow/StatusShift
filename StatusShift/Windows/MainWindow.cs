@@ -13,6 +13,7 @@ public partial class MainWindow : Window, IDisposable
     private readonly Plugin plugin;
     private string newRuleName = string.Empty;
     private string importMsg = string.Empty;
+    private string ruleFilter = string.Empty;
     private string jobSearch = string.Empty;
     private string worldSearch = string.Empty;
     private string zoneCustom = string.Empty;
@@ -41,6 +42,8 @@ public partial class MainWindow : Window, IDisposable
         ActivityFlag.Jumping, ActivityFlag.Occupied, ActivityFlag.Trading,
         ActivityFlag.BetweenAreas, ActivityFlag.Roleplaying,
         ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
+        ActivityFlag.Fishing, ActivityFlag.Performing, ActivityFlag.InSanctuary,
+        ActivityFlag.Carrying, ActivityFlag.UsingHousing, ActivityFlag.FashionAccessory,
     ];
 
     public MainWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion}###StatusShiftMain")
@@ -175,6 +178,9 @@ public partial class MainWindow : Window, IDisposable
             var clip = ImGui.GetClipboardText() ?? string.Empty;
             importMsg = plugin.TryImportOneRule(clip, out var err) ? "Imported." : err;
         }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(180);
+        ImGui.InputTextWithHint("##filter", "Filter / Search Rules", ref ruleFilter, 64);
         if (!string.IsNullOrEmpty(importMsg))
         {
             ImGui.SameLine();
@@ -189,6 +195,7 @@ public partial class MainWindow : Window, IDisposable
         ImGui.BeginChild("folders", new Vector2(150, 0), true);
         if (ImGui.Selectable("All", selectedFolder == "All")) selectedFolder = "All";
         if (ImGui.Selectable("Ungrouped", selectedFolder == "Ungrouped")) selectedFolder = "Ungrouped";
+        if (folders.Count > 0) ImGui.Separator();
         foreach (var folder in folders)
         {
             if (ImGui.Selectable(folder, selectedFolder.Equals(folder, StringComparison.OrdinalIgnoreCase)))
@@ -270,6 +277,8 @@ public partial class MainWindow : Window, IDisposable
             plugin.RequestEval();
         }
         if (ImGui.MenuItem("Edit")) editorOpen = true;
+        if (ImGui.MenuItem("Move up")) plugin.MovePriority(rule, 1);
+        if (ImGui.MenuItem("Move down")) plugin.MovePriority(rule, -1);
         if (ImGui.MenuItem("Duplicate")) plugin.DuplicateRule(rule);
         if (ImGui.MenuItem("Copy JSON"))
         {
@@ -294,6 +303,14 @@ public partial class MainWindow : Window, IDisposable
 
     private bool FolderVisible(StatusRule rule)
     {
+        if (!string.IsNullOrWhiteSpace(ruleFilter))
+        {
+            var q = ruleFilter.Trim();
+            if (!rule.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                && !(rule.Notes ?? string.Empty).Contains(q, StringComparison.OrdinalIgnoreCase)
+                && !(rule.Folder ?? string.Empty).Contains(q, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
         if (selectedFolder == "All") return true;
         if (selectedFolder == "Ungrouped") return string.IsNullOrWhiteSpace(rule.Folder);
         if (selectedFolder.StartsWith("char:", StringComparison.OrdinalIgnoreCase))
