@@ -11,6 +11,7 @@ public class ConfigWindow : Window, IDisposable
     private readonly Plugin plugin;
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
+    private string templateBuf = string.Empty;
 
     private static readonly ActivityFlag[] LiveStates =
     [
@@ -22,6 +23,8 @@ public class ConfigWindow : Window, IDisposable
         ActivityFlag.Sitting, ActivityFlag.Casting, ActivityFlag.Jumping, ActivityFlag.Occupied,
         ActivityFlag.Trading, ActivityFlag.BetweenAreas, ActivityFlag.Roleplaying,
         ActivityFlag.TargetingPlayer, ActivityFlag.TargetingEnemy, ActivityFlag.TargetedByPlayer,
+        ActivityFlag.Fishing, ActivityFlag.Performing, ActivityFlag.InSanctuary,
+        ActivityFlag.Carrying, ActivityFlag.UsingHousing, ActivityFlag.FashionAccessory,
     ];
 
     public ConfigWindow(Plugin plugin) : base($"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig")
@@ -57,18 +60,20 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Amber, "TIMERS / HANDLING");
-        var mode = (int)cfg.ApplyMode;
-        if (ImGui.Combo("Handling Mode", ref mode, ApplyModeNames.Labels, ApplyModeNames.Labels.Length))
+        ToggleRow(cfg, "Show Auto handling", () => cfg.ShowAutoApply, v => cfg.ShowAutoApply = v);
+        var labels = ApplyModeNames.ComboLabels(cfg.ShowAutoApply, cfg.ApplyMode);
+        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, cfg.ShowAutoApply);
+        if (ImGui.Combo("Handling Mode", ref mode, labels, labels.Length))
         {
-            cfg.ApplyMode = (ApplyMode)mode;
+            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, cfg.ShowAutoApply, cfg.ApplyMode);
             cfg.Save();
             plugin.RequestEval();
         }
-        ImGui.TextDisabled(mode switch
+        ImGui.TextDisabled(cfg.ApplyMode switch
         {
-            (int)ApplyMode.Auto => "Applies the highest matching rule.",
-            (int)ApplyMode.Off => "No timers, popups, or notifications.",
-            (int)ApplyMode.Selector => "Opens a list of matching rules. Click one to apply.",
+            ApplyMode.Auto => "Applies the highest matching rule.",
+            ApplyMode.Off => "No timers, popups, or notifications.",
+            ApplyMode.Selector => "Opens a list of matching rules. Click one to apply.",
             _ => "Chat / toast / sound only. Use /ss apply to set.",
         });
         if (cfg.ApplyMode == ApplyMode.Auto)
@@ -120,6 +125,32 @@ public class ConfigWindow : Window, IDisposable
         ToggleRow(cfg, "Show current info at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
 
         ImGui.Separator();
+        ImGui.TextColored(UiTheme.Teal, "COMMENT TEMPLATES");
+        ImGui.SetNextItemWidth(-80);
+        ImGui.InputTextWithHint("##tmpl", "New template text", ref templateBuf, 192);
+        ImGui.SameLine();
+        if (ImGui.Button("Add") && templateBuf.Trim().Length > 0)
+        {
+            cfg.CommentTemplates.Add(templateBuf.Trim());
+            templateBuf = string.Empty;
+            cfg.Save();
+        }
+        for (var i = 0; i < cfg.CommentTemplates.Count; i++)
+        {
+            ImGui.BulletText(cfg.CommentTemplates[i]);
+            ImGui.SameLine();
+            ImGui.PushID(i);
+            if (ImGui.SmallButton("x"))
+            {
+                cfg.CommentTemplates.RemoveAt(i);
+                cfg.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.PopID();
+        }
+
+        ImGui.Separator();
         DrawAnalysis();
 
         ImGui.Separator();
@@ -158,6 +189,7 @@ public class ConfigWindow : Window, IDisposable
         var look = LiveLook.Capture(plugin.Configuration.NearbyRange);
         WrapFact($"Job {snap.JobAbbr}", snap.JobAbbr.Length > 0);
         WrapFact(snap.WorldName, snap.WorldName.Length > 0);
+        WrapFact(snap.DataCenterName, snap.DataCenterName.Length > 0);
         WrapFact(snap.TerritoryName, snap.TerritoryName.Length > 0);
         if (snap.RegionName.Length > 0) WrapFact(snap.RegionName, true);
         if (snap.ZoneGroupName.Length > 0) WrapFact(snap.ZoneGroupName, true);
@@ -169,7 +201,7 @@ public class ConfigWindow : Window, IDisposable
         var wrap = ImGui.GetContentRegionAvail().X;
         var used = 0f;
         var first = true;
-        foreach (var flag in LiveStates)
+        foreach (var flag in LiveStates.OrderBy(f => f.ToString()))
         {
             var on = snap.Activities.Contains(flag);
             var label = flag.ToString();
