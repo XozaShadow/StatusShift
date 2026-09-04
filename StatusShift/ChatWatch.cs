@@ -1,6 +1,6 @@
 using System;
+using Dalamud.Game.Chat;
 using Dalamud.Game.Text;
-using Dalamud.Game.Text.SeStringHandling;
 
 namespace StatusShift;
 
@@ -19,12 +19,13 @@ internal static class ChatWatch
     public static void Attach() => Plugin.Chat.ChatMessage += OnChat;
     public static void Detach() => Plugin.Chat.ChatMessage -= OnChat;
 
-    private static void OnChat(XivChatType type, int timestamp, ref SeString sender, ref SeString message, ref bool isHandled)
+    private static void OnChat(IHandleableChatMessage message)
     {
+        var type = message.LogKind;
         var channel = ChannelName(type);
         if (channel.Length == 0) return;
-        var who = sender.TextValue.Trim();
-        var text = message.TextValue.Trim();
+        var who = message.Sender.TextValue.Trim();
+        var text = message.Message.TextValue.Trim();
         LastChatChannel = channel;
         LastChatSender = who;
         LastChatText = text;
@@ -72,8 +73,6 @@ internal static class ChatWatch
         XivChatType.Alliance => "Alliance",
         XivChatType.FreeCompany => "Free Company",
         XivChatType.NoviceNetwork => "Novice Network",
-        XivChatType.CustomEmote => "Custom Emote",
-        XivChatType.StandardEmote => "Emote",
         XivChatType.Echo => "Echo",
         XivChatType.PvPTeam => "PvP Team",
         XivChatType.Ls1 => "Linkshell 1",
@@ -97,8 +96,7 @@ internal static class ChatWatch
 
     public static readonly string[] Channels =
     [
-        "Alliance", "Custom Emote", "Echo", "Emote", "Free Company",
-        "Linkshell 1", "Novice Network", "Party", "PvP Team",
+        "Alliance", "Echo", "Free Company", "Linkshell 1", "Novice Network", "Party", "PvP Team",
         "Say", "Shout", "Tell", "Tell Out", "Yell",
     ];
 }
