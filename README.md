@@ -18,8 +18,7 @@ Rules can also run a slash command when they match, and can restore a previous s
 ## Install
 
 Install from the **Dalamud plugin installer** (`/xlplugins`) when StatusShift is listed there.
-`https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json`.
-The plugin icon is `images/icon.png` (512×512).
+`https://raw.githubusercontent.com/XozaShadow/StatusShift/main/repo.json`
 
 ## Quick start
 
