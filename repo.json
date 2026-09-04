@@ -12,7 +12,7 @@
     "DalamudApiLevel": 15,
     "TestingDalamudApiLevel": 15,
     "IsHide": false,
-    "IsTestingExclusive": false,
+    "IsTestingExclusive": true,
     "DownloadCount": 0,
     "LastUpdate": 1788556460,
     "LoadPriority": 0,
