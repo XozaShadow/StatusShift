@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace StatusShift;
 
 public partial class Configuration
@@ -8,4 +10,6 @@ public partial class Configuration
     public float NearbyRange { get; set; } = 80f;
     public bool SkipWhileTargeted { get; set; }
     public bool SkipWhileEmoting { get; set; }
+    public bool ShowAutoApply { get; set; }
+    public List<string> CommentTemplates { get; set; } = [];
 }
