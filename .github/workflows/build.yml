@@ -90,19 +90,23 @@ jobs:
           $unix = [int64]"${{ steps.ver.outputs.unix }}"
           $link = "https://github.com/XozaShadow/StatusShift/releases/latest/download/StatusShift.zip"
           foreach ($path in @("pluginmaster.json", "repo.json")) {
-            $j = Get-Content $path -Raw | ConvertFrom-Json
-            $j[0].AssemblyVersion = $v
-            $j[0].DownloadLinkInstall = $link
-            $j[0].DownloadLinkUpdate = $link
-            $j[0].DownloadLinkTesting = $link
-            if ($j[0].PSObject.Properties.Name -contains "TestingAssemblyVersion") {
-              $j[0].TestingAssemblyVersion = $v
+            $raw = Get-Content $path -Raw | ConvertFrom-Json
+            $entry = if ($raw -is [System.Array]) { $raw[0] } else { $raw }
+            $entry.AssemblyVersion = $v
+            $entry.DownloadLinkInstall = $link
+            $entry.DownloadLinkUpdate = $link
+            $entry.DownloadLinkTesting = $link
+            if ($entry.PSObject.Properties.Name -contains "TestingAssemblyVersion") {
+              $entry.TestingAssemblyVersion = $v
             }
-            if ($j[0].PSObject.Properties.Name -contains "LastUpdate") {
-              $j[0].LastUpdate = $unix
+            if ($entry.PSObject.Properties.Name -contains "LastUpdate") {
+              $entry.LastUpdate = $unix
             }
-            $json = $j | ConvertTo-Json -Depth 8
-            [IO.File]::WriteAllText((Resolve-Path $path), $json + "`n")
+            $json = ConvertTo-Json -InputObject @($entry) -Depth 8
+            if (-not $json.TrimStart().StartsWith('[')) {
+              $json = "[`n" + $json + "`n]"
+            }
+            [IO.File]::WriteAllText((Resolve-Path $path), $json.TrimEnd() + "`n")
           }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
