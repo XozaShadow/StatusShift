@@ -16,7 +16,8 @@ public partial class MainWindow
         }
 
         ImGui.TextColored(UiTheme.Amber, $"EDITING: P{rule.Priority}  {rule.Name}");
-        ImGui.SameLine();
+        var avail = ImGui.GetContentRegionAvail().X;
+        ImGui.SameLine(Math.Max(220, avail - 220));
         ImGui.TextDisabled("Copy:");
         ImGui.SameLine();
         if (ImGui.SmallButton("JSON"))
@@ -83,11 +84,25 @@ public partial class MainWindow
             cfg.Save();
         }
         ImGui.SameLine();
-        if (ImGui.Checkbox("Audible", ref audible))
+        if (ImGui.Checkbox("Sound", ref audible))
         {
             rule.NotifyAudible = audible;
             rule.NotifyIfNotApplied = rule.NotifyChat || rule.NotifyAudible;
+            if (audible && rule.NotifySound <= 0) rule.NotifySound = cfg.NotifySound;
             cfg.Save();
+        }
+        if (rule.NotifyAudible)
+        {
+            ImGui.SameLine();
+            var sound = rule.NotifySound <= 0 ? cfg.NotifySound : rule.NotifySound;
+            ImGui.SetNextItemWidth(80);
+            if (ImGui.SliderInt("##rsnd", ref sound, 1, 16))
+            {
+                rule.NotifySound = sound;
+                cfg.Save();
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Test")) GameSounds.Play(rule.NotifySound);
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Notify if this rule matches but is not applied");
@@ -182,6 +197,13 @@ public partial class MainWindow
 
         if (!fallback && !string.IsNullOrWhiteSpace(rule.Command))
         {
+            var delay = rule.CommandDelaySeconds;
+            ImGui.SetNextItemWidth(60);
+            if (ImGui.InputInt("Wait before command (s)", ref delay))
+            {
+                rule.CommandDelaySeconds = Math.Max(0, delay);
+                cfg.Save();
+            }
             var rerun = rule.RerunCommand;
             if (ImGui.Checkbox("Repeat this /command every", ref rerun))
             {
