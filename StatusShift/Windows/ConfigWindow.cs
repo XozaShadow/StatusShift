@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -11,7 +12,9 @@ public class ConfigWindow : Window, IDisposable
     private readonly Plugin plugin;
     private string importBuf = string.Empty;
     private string lastMsg = string.Empty;
-    private string templateBuf = string.Empty;
+    private string templateTitleBuf = string.Empty;
+    private string templateBodyBuf = string.Empty;
+    private int editingTemplate = -1;
 
     private static readonly ActivityFlag[] LiveStates =
     [
@@ -40,6 +43,7 @@ public class ConfigWindow : Window, IDisposable
     {
         WindowName = $"Status Shift v{Plugin.AppVersion} Settings###StatusShiftConfig";
         var cfg = plugin.Configuration;
+        cfg.MigrateCommentTemplates();
 
         ImGui.TextColored(UiTheme.Teal, "SKIP CHECKS WHILE");
         ToggleRow(cfg, "In Combat", () => cfg.SkipWhileCombat, v => cfg.SkipWhileCombat = v);
@@ -124,30 +128,7 @@ public class ConfigWindow : Window, IDisposable
         ToggleRow(cfg, "Show current info at top", () => cfg.ShowSnapshot, v => cfg.ShowSnapshot = v);
 
         ImGui.Separator();
-        ImGui.TextColored(UiTheme.Teal, "COMMENT TEMPLATES");
-        ImGui.SetNextItemWidth(-80);
-        ImGui.InputTextWithHint("##tmpl", "New template text", ref templateBuf, 192);
-        ImGui.SameLine();
-        if (ImGui.Button("Add") && templateBuf.Trim().Length > 0)
-        {
-            cfg.CommentTemplates.Add(templateBuf.Trim());
-            templateBuf = string.Empty;
-            cfg.Save();
-        }
-        for (var i = 0; i < cfg.CommentTemplates.Count; i++)
-        {
-            ImGui.BulletText(cfg.CommentTemplates[i]);
-            ImGui.SameLine();
-            ImGui.PushID(i);
-            if (ImGui.SmallButton("x"))
-            {
-                cfg.CommentTemplates.RemoveAt(i);
-                cfg.Save();
-                ImGui.PopID();
-                break;
-            }
-            ImGui.PopID();
-        }
+        DrawTemplates(cfg);
 
         ImGui.Separator();
         DrawAnalysis();
@@ -160,35 +141,133 @@ public class ConfigWindow : Window, IDisposable
             lastMsg = "All rules copied.";
         }
         ImGui.SameLine();
-        if (ImGui.Button("Replace all from Clipboard"))
+        DangerButton("Replace all from Clipboard", "Hold Shift. Replaces every rule from clipboard JSON.", () =>
         {
             var clip = ImGui.GetClipboardText() ?? string.Empty;
             if (LooksLikeRules(clip))
                 lastMsg = plugin.TryImportRulesJson(clip, out var err) ? "Replaced all rules." : err;
             else lastMsg = "Clipboard is empty or not Status Shift JSON.";
-        }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Replaces every rule. Needs valid Status Shift JSON. Empty clipboard is ignored.");
+        });
 
         ImGui.InputTextMultiline("##import", ref importBuf, 20000, new Vector2(-1, 90));
-        if (ImGui.Button("Replace All With Import Box Content"))
+        DangerButton("Replace All With Import Box Content", "Hold Shift. Replaces every rule from the box.", () =>
         {
             if (LooksLikeRules(importBuf))
                 lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Replaced all rules." : err2;
             else lastMsg = "Box is empty or not Status Shift JSON.";
-        }
+        });
         ImGui.SameLine();
-        if (ImGui.Button("Archive Current & Wipe"))
-        {
-            var path = RuleStore.ArchiveAndWipe(cfg);
-            lastMsg = "Archived and wiped. Copy is at:\n" + path;
-            plugin.RequestEval();
-        }
-        ImGui.TextDisabled("Saves live here:");
-        ImGui.TextWrapped(RuleStore.FilePath);
-        ImGui.TextDisabled("Archive Current & Wipe copies rules.json then starts a blank list.");
+        DangerButton("Archive Current & Wipe",
+            "Hold Shift. Copies the current save, then starts a blank rules list.",
+            () =>
+            {
+                var path = RuleStore.ArchiveAndWipe(cfg);
+                lastMsg = $"All rules cleared, old archived as: {Path.GetFileName(path)}";
+                plugin.RequestEval();
+            });
+
+        ImGui.TextUnformatted("Save Location: " + RuleStore.FilePath);
         if (!string.IsNullOrEmpty(lastMsg))
             ImGui.TextWrapped(lastMsg);
+    }
+
+    private void DrawTemplates(Configuration cfg)
+    {
+        ImGui.TextColored(UiTheme.Teal, "COMMENT TEMPLATES");
+        ImGui.TextDisabled("60 characters. Same specials as the in-game search comment.");
+        ImGui.SetNextItemWidth(160);
+        ImGui.InputTextWithHint("##ttitle", "Title", ref templateTitleBuf, 32);
+        ImGui.InputTextMultiline("##tbody", ref templateBodyBuf, SearchComments.MaxLength + 1, new Vector2(-1, 54));
+        templateBodyBuf = SearchComments.Clamp(templateBodyBuf);
+        ImGui.TextDisabled($"{templateBodyBuf.Length}/{SearchComments.MaxLength}");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Add") && templateBodyBuf.Trim().Length > 0)
+        {
+            plugin.AddCommentTemplate(templateTitleBuf, templateBodyBuf);
+            templateTitleBuf = string.Empty;
+            templateBodyBuf = string.Empty;
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Save last applied"))
+        {
+            var body = plugin.LastAppliedComment;
+            if (string.IsNullOrWhiteSpace(body))
+                lastMsg = "No applied comment yet.";
+            else
+                plugin.AddCommentTemplate(string.IsNullOrWhiteSpace(templateTitleBuf) ? "Last applied" : templateTitleBuf, body);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Stores the last search comment Status Shift wrote.");
+
+        var wrap = ImGui.GetContentRegionAvail().X;
+        var used = 0f;
+        for (var i = 0; i < cfg.NamedTemplates.Count; i++)
+        {
+            var tmpl = cfg.NamedTemplates[i];
+            var label = tmpl.Title;
+            var need = ImGui.CalcTextSize(label).X + 16;
+            if (i > 0 && used + need < wrap) ImGui.SameLine();
+            else used = 0;
+            used += need;
+            ImGui.PushID(tmpl.Id);
+            if (ImGui.SmallButton(label))
+                ImGui.OpenPopup("tmplpop");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"{tmpl.Body.Length}/{SearchComments.MaxLength}\n{tmpl.Body}\nRight-click for edit / copy last / delete");
+            if (ImGui.BeginPopupContextItem("tmplpop"))
+            {
+                if (ImGui.MenuItem("Edit"))
+                {
+                    editingTemplate = i;
+                    templateTitleBuf = tmpl.Title;
+                    templateBodyBuf = tmpl.Body;
+                }
+                if (ImGui.MenuItem("Copy last applied into this"))
+                {
+                    var body = plugin.LastAppliedComment;
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        tmpl.Body = SearchComments.Clamp(body);
+                        cfg.Save();
+                    }
+                }
+                if (ImGui.MenuItem("Delete"))
+                {
+                    cfg.NamedTemplates.RemoveAt(i);
+                    cfg.Save();
+                    ImGui.EndPopup();
+                    ImGui.PopID();
+                    break;
+                }
+                ImGui.EndPopup();
+            }
+            ImGui.PopID();
+        }
+
+        if (editingTemplate >= 0 && editingTemplate < cfg.NamedTemplates.Count)
+        {
+            ImGui.Separator();
+            ImGui.TextDisabled("Editing template");
+            var tmpl = cfg.NamedTemplates[editingTemplate];
+            var title = tmpl.Title;
+            var body = tmpl.Body;
+            ImGui.SetNextItemWidth(160);
+            if (ImGui.InputText("Title", ref title, 32)) { tmpl.Title = title; cfg.Save(); }
+            ImGui.InputTextMultiline("##editbody", ref body, SearchComments.MaxLength + 1, new Vector2(-1, 54));
+            body = SearchComments.Clamp(body);
+            if (body != tmpl.Body) { tmpl.Body = body; cfg.Save(); }
+            if (ImGui.SmallButton("Done")) editingTemplate = -1;
+        }
+    }
+
+    private void DangerButton(string label, string hover, Action act)
+    {
+        var shift = ImGui.GetIO().KeyShift || ImGui.GetIO().KeyCtrl;
+        if (!shift) ImGui.BeginDisabled();
+        if (ImGui.Button(label) && shift) act();
+        if (!shift) ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip(hover);
     }
 
     private void DrawAnalysis()
@@ -226,10 +305,10 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Dummy(new Vector2(1, 6));
         ImGui.TextColored(UiTheme.Teal, "RULES");
-        var matches = plugin.CurrentMatches();
+        var matches = plugin.CurrentPotentialMatches();
         if (matches.Count == 0) ImGui.TextDisabled("No rules match right now.");
         foreach (var rule in matches)
-            ImGui.TextUnformatted($"P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
+            ImGui.TextUnformatted($"{(rule.Enabled ? "On" : "Off")}  P{rule.Priority}  {rule.Name}  {ChatSender.StatusLabels[(int)rule.OnlineStatus]}");
         ImGui.TextDisabled(plugin.ExplainMatch());
     }
 

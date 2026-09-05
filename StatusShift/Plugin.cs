@@ -55,6 +55,10 @@ public sealed partial class Plugin : IDalamudPlugin
     private string? pendingRuleId;
     private string? lastSelectorKey;
     private bool paused;
+    private DateTime? testRevertAt;
+    private string? testRevertRuleId;
+
+    public string LastAppliedComment => lastAppliedComment;
 
     public Plugin()
     {
@@ -85,6 +89,7 @@ public sealed partial class Plugin : IDalamudPlugin
         ClientState.TerritoryChanged += OnTerritoryChanged;
         ClientState.Login += OnLogin;
         Framework.Update += OnFrameworkUpdate;
+        ChatWatch.Attach();
 
         if (Configuration.OpenUiOnLoad)
             mainWindow.IsOpen = true;
@@ -93,6 +98,7 @@ public sealed partial class Plugin : IDalamudPlugin
     public void Dispose()
     {
         try { RuleStore.Save(Configuration); } catch { /* ignore */ }
+        ChatWatch.Detach();
         Framework.Update -= OnFrameworkUpdate;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         ClientState.Login -= OnLogin;
@@ -212,8 +218,58 @@ public sealed partial class Plugin : IDalamudPlugin
             Notify("No matching rule.");
             return false;
         }
-        var comment = rule.ChangeSearchComment ? engine.ResolveComment(rule) : string.Empty;
+        var comment = rule.ChangeSearchComment ? SearchComments.Clamp(engine.ResolveComment(rule)) : string.Empty;
         return ApplyValues(rule, comment, force);
+    }
+
+    public string TestRule(StatusRule rule, RuleTestStage stage)
+    {
+        var ctx = engine.Snapshot();
+        var playerName = ObjectTable.LocalPlayer?.Name.TextValue ?? string.Empty;
+
+        if (stage == RuleTestStage.Full)
+        {
+            if (!StatusRule.MatchesCharacter(rule.CharacterFilter, playerName, ctx.WorldName))
+                return "Character filter does not match this character.";
+        }
+
+        if (stage is RuleTestStage.Full or RuleTestStage.FromSchedule)
+        {
+            if (!engine.ScheduleOk(rule, ctx.Now))
+                return "Schedule does not match right now.";
+        }
+
+        if (stage is RuleTestStage.Full or RuleTestStage.FromSchedule or RuleTestStage.FromConditions)
+        {
+            if (!RuleEngine.ChipsOk(rule, ctx))
+                return "Conditions do not match right now.";
+        }
+
+        if (stage == RuleTestStage.RevertNow)
+        {
+            ApplyFallback(rule, ignoreCooldown: true);
+            testRevertAt = null;
+            testRevertRuleId = null;
+            return "Ran WHEN RULE STOPS MATCHING.";
+        }
+
+        TryApply(rule, force: true);
+        testRevertAt = DateTime.Now.AddSeconds(5);
+        testRevertRuleId = rule.Id;
+        return "Applied. Reverts in 5 seconds as if the rule stopped matching.";
+    }
+
+    public CommentTemplate AddCommentTemplate(string title, string body)
+    {
+        Configuration.MigrateCommentTemplates();
+        var tmpl = new CommentTemplate
+        {
+            Title = string.IsNullOrWhiteSpace(title) ? "Untitled" : title.Trim(),
+            Body = SearchComments.Clamp(body),
+        };
+        Configuration.NamedTemplates.Add(tmpl);
+        Configuration.Save();
+        return tmpl;
     }
 
     private bool ApplyValues(StatusRule rule, string comment, bool force)
@@ -224,7 +280,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         var ok = true;
         if (rule.ChangeSearchComment && !string.IsNullOrWhiteSpace(comment))
-            ok &= ChatSender.TrySendCommand($"/searchcomment {comment}");
+            ok &= ChatSender.TrySendCommand($"/searchcomment {SearchComments.Clamp(comment)}");
 
         var statusCmd = ChatSender.ToStatusCommand(rule.OnlineStatus);
         if (statusCmd is not null)
@@ -257,6 +313,7 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var command = rule.Command.Trim();
         if (!command.StartsWith('/')) command = "/" + command;
+        command = CommandTokens.Resolve(command, engine.Snapshot(), LiveLook.Capture(Configuration.NearbyRange));
 
         if (IsSelfCommand(command, out var selfKey))
         {
@@ -398,6 +455,15 @@ public sealed partial class Plugin : IDalamudPlugin
         }
 
         if (!Configuration.Enabled || paused || !ClientState.IsLoggedIn) return;
+        if (testRevertAt is DateTime when && DateTime.Now >= when)
+        {
+            testRevertAt = null;
+            var testRule = Configuration.Rules.Find(r => r.Id == testRevertRuleId);
+            testRevertRuleId = null;
+            if (testRule is not null)
+                ApplyFallback(testRule, ignoreCooldown: true);
+        }
+
         if (Configuration.ApplyMode == ApplyMode.Off) return;
 
         var snap = engine.Snapshot();
@@ -432,8 +498,29 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             TryRevert();
             lastCommandRuleId = null;
-            lastSelectorKey = null;
-            selectorWindow.Hide();
+            if (Configuration.ApplyMode == ApplyMode.Selector)
+            {
+                var potential = engine.FindPotentialMatches();
+                if (potential.Count == 0)
+                {
+                    lastSelectorKey = null;
+                    selectorWindow.Hide();
+                }
+                else
+                {
+                    var pkey = string.Join("|", potential.ConvertAll(r => r.Id + (r.Enabled ? "1" : "0")));
+                    if (forceNotice || pkey != lastSelectorKey)
+                    {
+                        lastSelectorKey = pkey;
+                        selectorWindow.Show(potential);
+                    }
+                }
+            }
+            else
+            {
+                lastSelectorKey = null;
+                selectorWindow.Hide();
+            }
             return;
         }
 
@@ -452,13 +539,18 @@ public sealed partial class Plugin : IDalamudPlugin
 
         if (Configuration.ApplyMode == ApplyMode.Selector)
         {
-            var matches = engine.FindMatches();
-            var key = string.Join("|", matches.ConvertAll(r => r.Id));
-            if (forceNotice || key != lastSelectorKey)
+            var matches = engine.FindPotentialMatches();
+            var key = string.Join("|", matches.ConvertAll(r => r.Id + (r.Enabled ? "1" : "0")));
+            if (matches.Count == 0)
+            {
+                lastSelectorKey = null;
+                selectorWindow.Hide();
+            }
+            else if (forceNotice || key != lastSelectorKey)
             {
                 lastSelectorKey = key;
                 selectorWindow.Show(matches);
-                if (rule.NotifyIfNotApplied)
+                if (rule?.NotifyIfNotApplied == true)
                     Notify($"Match [{rule.Name}] — pick in selector");
             }
             return;
@@ -499,14 +591,31 @@ public sealed partial class Plugin : IDalamudPlugin
         if ((DateTime.Now - lastApply).TotalSeconds < Math.Max(5, Configuration.CooldownSeconds)
             && Configuration.ApplyMode == ApplyMode.Auto && lastApply != DateTime.MinValue)
             return;
+        ApplyFallback(previous, ignoreCooldown: false);
+    }
 
-        lastAppliedComment = previous.FallbackComment;
+    internal void ApplyFallback(StatusRule previous, bool ignoreCooldown)
+    {
+        if (!previous.RevertWhenFalse)
+        {
+            Notify($"[{previous.Name}] keep — nothing reverted.");
+            return;
+        }
+
+        if (!ignoreCooldown
+            && (DateTime.Now - lastApply).TotalSeconds < Math.Max(5, Configuration.CooldownSeconds)
+            && Configuration.ApplyMode == ApplyMode.Auto && lastApply != DateTime.MinValue)
+            return;
+
+        lastMatchedRuleId = null;
+        var comment = previous.ChangeFallbackComment ? SearchComments.Clamp(engine.ResolveFallbackComment(previous)) : string.Empty;
+        lastAppliedComment = comment;
         lastAppliedStatus = previous.FallbackStatus;
         lastAppliedCommand = previous.FallbackCommand ?? string.Empty;
         lastApply = DateTime.Now;
 
-        if (previous.ChangeFallbackComment && !string.IsNullOrWhiteSpace(previous.FallbackComment))
-            ChatSender.TrySendCommand($"/searchcomment {previous.FallbackComment}");
+        if (previous.ChangeFallbackComment && !string.IsNullOrWhiteSpace(comment))
+            ChatSender.TrySendCommand($"/searchcomment {comment}");
         var statusCmd = ChatSender.ToStatusCommand(previous.FallbackStatus);
         if (statusCmd is not null)
             ChatSender.TrySendCommand(statusCmd);
@@ -514,6 +623,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             var fb = previous.FallbackCommand.Trim();
             if (!fb.StartsWith('/')) fb = "/" + fb;
+            fb = CommandTokens.Resolve(fb, engine.Snapshot(), LiveLook.Capture(Configuration.NearbyRange));
             if (!IsSelfCommand(fb, out _))
                 ChatSender.TrySendCommand(fb);
         }

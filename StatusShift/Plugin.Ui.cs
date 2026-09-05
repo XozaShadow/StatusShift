@@ -18,6 +18,7 @@ public sealed partial class Plugin
     }
 
     public List<StatusRule> CurrentMatches() => engine.FindMatches();
+    public List<StatusRule> CurrentPotentialMatches() => engine.FindPotentialMatches();
 
     public void OpenRule(string id) => mainWindow.OpenRule(id);
 

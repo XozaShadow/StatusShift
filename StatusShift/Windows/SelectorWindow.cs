@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -14,12 +15,14 @@ public sealed class SelectorWindow : Window
         : base("Status Shift · pick a rule###StatusShiftSelector")
     {
         this.plugin = plugin;
+        Size = new Vector2(380, 340);
+        SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(280, 120),
-            MaximumSize = new Vector2(520, 420),
+            MinimumSize = new Vector2(320, 180),
+            MaximumSize = new Vector2(560, 640),
         };
-        Flags = ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse;
+        Flags = ImGuiWindowFlags.NoCollapse;
     }
 
     public void Show(List<StatusRule> rules)
@@ -32,17 +35,54 @@ public sealed class SelectorWindow : Window
 
     public override void Draw()
     {
-        ImGui.TextColored(UiTheme.Teal, "Matching rules");
-        ImGui.TextDisabled("Click one to apply. Window closes after.");
-        if (matches.Count == 0)
+        var cfg = plugin.Configuration;
+        ImGui.TextColored(UiTheme.Teal, "Matching now");
+        ImGui.TextDisabled("Checkbox on/off. Click the name to apply.");
+
+        var labels = ApplyModeNames.ComboLabels(true, cfg.ApplyMode);
+        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, true);
+        ImGui.SetNextItemWidth(160);
+        if (ImGui.Combo("Handling", ref mode, labels, labels.Length))
         {
-            ImGui.TextDisabled("None.");
+            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, true, cfg.ApplyMode);
+            cfg.Save();
+            plugin.RequestEval();
+        }
+
+        var active = matches.Where(r => r.Enabled).ToList();
+        var inactive = matches.Where(r => !r.Enabled).ToList();
+
+        ImGui.Separator();
+        ImGui.TextColored(UiTheme.Amber, "Active");
+        DrawGroup(cfg, active, "No enabled match.");
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Inactive");
+        DrawGroup(cfg, inactive, "No disabled match.");
+
+        if (ImGui.Button("Close"))
+            IsOpen = false;
+    }
+
+    private void DrawGroup(Configuration cfg, List<StatusRule> rules, string empty)
+    {
+        if (rules.Count == 0)
+        {
+            ImGui.TextDisabled(empty);
             return;
         }
 
-        foreach (var rule in matches)
+        foreach (var rule in rules)
         {
             ImGui.PushID(rule.Id);
+            var on = rule.Enabled;
+            if (ImGui.Checkbox("##on", ref on))
+            {
+                rule.Enabled = on;
+                cfg.Save();
+                plugin.RequestEval();
+            }
+            ImGui.SameLine();
             var label = $"P{rule.Priority}  {rule.Name}  {StatusShort(rule)}";
             if (ImGui.Selectable(label))
             {
@@ -51,9 +91,6 @@ public sealed class SelectorWindow : Window
             }
             ImGui.PopID();
         }
-
-        if (ImGui.Button("Close"))
-            IsOpen = false;
     }
 
     private static string StatusShort(StatusRule rule) =>

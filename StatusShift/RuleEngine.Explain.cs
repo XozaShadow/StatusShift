@@ -23,6 +23,22 @@ internal sealed partial class RuleEngine
         return list;
     }
 
+    public List<StatusRule> FindPotentialMatches()
+    {
+        var list = new List<StatusRule>();
+        if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded)
+            return list;
+        var ctx = Snapshot();
+        if (Skipped(ctx, out _))
+            return list;
+        foreach (var rule in config.Rules.OrderByDescending(r => r.Priority))
+        {
+            if (Matches(rule, ctx) && ChipsOk(rule, ctx))
+                list.Add(rule);
+        }
+        return list;
+    }
+
     public string Explain()
     {
         if (!Plugin.ClientState.IsLoggedIn || !Plugin.PlayerState.IsLoaded)

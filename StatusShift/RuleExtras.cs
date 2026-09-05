@@ -11,6 +11,7 @@ public partial class StatusRule
     public List<RuleChip> NotChips { get; set; } = [];
     public int CommandDelaySeconds { get; set; }
     public string CommentTemplate { get; set; } = string.Empty;
+    public string FallbackCommentTemplate { get; set; } = string.Empty;
     public string FallbackCommand { get; set; } = string.Empty;
     public bool NotifyIfNotApplied { get; set; }
     public bool NotifyChat { get; set; } = true;
@@ -27,6 +28,11 @@ public partial class StatusRule
             return at < 0 ? filter : filter[..at].Trim();
         }
     }
+
+    public bool UsesStatusCondition =>
+        ChipKindPresent(AndChips, ChipKind.Status)
+        || ChipKindPresent(OrChips, ChipKind.Status)
+        || ChipKindPresent(NotChips, ChipKind.Status);
 
     public bool HasLegacy =>
         ((Location?.Kind ?? LocationKind.Any) is not LocationKind.Any and not LocationKind.World)
@@ -65,4 +71,7 @@ public partial class StatusRule
         TerritoryNameContains.Clear();
         TerritoryIds.Clear();
     }
+
+    private static bool ChipKindPresent(List<RuleChip>? chips, ChipKind kind) =>
+        chips is not null && chips.Exists(c => c.Kind == kind);
 }

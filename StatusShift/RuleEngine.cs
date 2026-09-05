@@ -32,7 +32,8 @@ internal sealed partial class RuleEngine(Configuration config)
     {
         var snap = GameSnapshot.Capture();
         var time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        return rule.SearchComment
+        var text = SearchComments.ResolveBody(config, rule, fallback: false);
+        return text
             .Replace("{zone}", snap.TerritoryName, StringComparison.OrdinalIgnoreCase)
             .Replace("{region}", snap.RegionName, StringComparison.OrdinalIgnoreCase)
             .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
@@ -42,6 +43,24 @@ internal sealed partial class RuleEngine(Configuration config)
             .Replace("{plot}", snap.Housing.Plot.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
     }
+
+    public string ResolveFallbackComment(StatusRule rule)
+    {
+        var snap = GameSnapshot.Capture();
+        var time = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var text = SearchComments.ResolveBody(config, rule, fallback: true);
+        return text
+            .Replace("{zone}", snap.TerritoryName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{region}", snap.RegionName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{job}", snap.JobAbbr, StringComparison.OrdinalIgnoreCase)
+            .Replace("{world}", snap.WorldName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{home}", snap.HomeWorldName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{ward}", snap.Housing.Ward.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{plot}", snap.Housing.Plot.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{time}", time, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool ScheduleOk(StatusRule rule, DateTime now) => ScheduleMatches(rule, now);
 
     public GameSnapshot Snapshot() => GameSnapshot.Capture();
 

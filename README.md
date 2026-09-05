@@ -63,13 +63,20 @@ Set in Settings, or with `/ss`:
 - **Category** — optional folder in the left list. A character filter also appears under Characters.
 - **Schedule** — Always, Daily, Weekly, One Time, or Custom. Times are 24-hour `HH:mm`. Dates are `YYYY-MM-DD`.
 - **Conditions** — AND chips must all match. OR chips need one match. Empty lists mean “any.”
-- **Then** — online status (or leave it alone), optional slash command, optional search comment.
+- **Then** — online status (or leave it alone), optional slash command, optional search comment (60 characters, same specials as the in-game search info).
+- **Comment templates** — titled 60-character snippets. A rule can type a comment or pick a template. Edit a template once and every rule using it updates.
 - **Repeat command** — run the slash command once, or every N seconds (`0` uses the Settings check interval).
 - **When it ends** — revert to another status / comment / command, or keep what this rule set.
 
 Search comment tokens: `{zone}` `{region}` `{job}` `{world}` `{home}` `{ward}` `{plot}` `{time}`.
 
-Share one rule from the editor as JSON or as an `SS1.` share code. Paste that with **Import Rule**. Settings can copy or replace the full ruleset.
+Command tokens: `{teller}` `{targeter}` `{target}` `{zone}` `{job}` `{world}` `{home}` `{dc}` `{ward}` `{plot}` `{time}`.
+
+Share one rule from the editor as JSON or as an `SS1.` share code. Paste that with **Import Rule**. Settings can copy or replace the full ruleset (Shift required to replace, archive, or wipe).
+
+**Selector:** matching rules appear even if they are off. Checkbox turns a rule on or off. Click the name to apply. Handling mode can be changed from that window.
+
+**Test** buttons on a rule run that section now (ignores timers). Full / Then tests revert after 5 seconds.
 
 ## Settings
 

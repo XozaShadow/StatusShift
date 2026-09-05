@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 
@@ -6,6 +7,9 @@ namespace StatusShift.Windows;
 
 public partial class MainWindow
 {
+    private string templateTitleBuf = string.Empty;
+    private string testMsg = string.Empty;
+
     private void DrawRule(Configuration cfg, StatusRule rule, ref StatusRule? remove)
     {
         if (rule.HasLegacy)
@@ -15,24 +19,13 @@ public partial class MainWindow
                 ImGui.SetTooltip(rule.LegacySummary());
         }
 
-        ImGui.TextColored(UiTheme.Amber, $"EDITING: P{rule.Priority}  {rule.Name}");
-        var rightPad = 48f;
-        var buttons = ImGui.CalcTextSize("Copy: JSON ShareCode Duplicate X").X + 72f;
-        var avail = ImGui.GetContentRegionAvail().X;
-        ImGui.SameLine(Math.Max(160f, avail - buttons - rightPad));
-        ImGui.TextDisabled("Copy:");
+        ImGui.TextColored(UiTheme.Amber, $"EDITING: P{rule.Priority}: {rule.Name}");
         ImGui.SameLine();
-        if (ImGui.SmallButton("JSON"))
-        {
-            ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
-            importMsg = "JSON copied.";
-        }
+        ImGui.TextDisabled("|");
         ImGui.SameLine();
-        if (ImGui.SmallButton("ShareCode"))
-        {
-            ImGui.SetClipboardText(ChipShare.Encode(rule));
-            importMsg = "Share code copied.";
-        }
+        if (TestButton("hdr", rule, RuleTestStage.Full,
+                "Runs character, schedule, conditions, then set. After 5 seconds reverts as if the rule stopped matching. Ignores timers."))
+            return;
         ImGui.SameLine();
         if (ImGui.SmallButton("Duplicate"))
         {
@@ -41,14 +34,36 @@ public partial class MainWindow
             selectedRuleId = copy.Id;
         }
         ImGui.SameLine();
-        if (ImGui.SmallButton("X"))
+        if (ImGui.SmallButton("Close"))
         {
             editorOpen = false;
             selectedRuleId = null;
             return;
         }
         ImGui.SameLine();
-        ImGui.Dummy(new Vector2(rightPad, 1));
+        var ioDel = ImGui.GetIO();
+        var canDelete = ioDel.KeyShift || ioDel.KeyCtrl;
+        if (!canDelete) ImGui.BeginDisabled();
+        if (ImGui.SmallButton("Delete")) remove = rule;
+        if (!canDelete) ImGui.EndDisabled();
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Hold Shift to delete this rule.");
+        ImGui.SameLine();
+        ImGui.TextDisabled("|  Copy Share:");
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Code"))
+        {
+            ImGui.SetClipboardText(ChipShare.Encode(rule));
+            importMsg = "Share code copied.";
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("JSON"))
+        {
+            ImGui.SetClipboardText(plugin.ExportRuleJson(rule));
+            importMsg = "JSON copied.";
+        }
+        if (!string.IsNullOrEmpty(testMsg))
+            ImGui.TextDisabled(testMsg);
 
         if (ImGui.BeginTable("edmeta", 4, ImGuiTableFlags.SizingFixedFit))
         {
@@ -106,7 +121,7 @@ public partial class MainWindow
                 cfg.Save();
             }
             ImGui.SameLine();
-            if (ImGui.SmallButton("Test")) GameSounds.Play(rule.NotifySound);
+            if (ImGui.SmallButton("Test##snd")) GameSounds.Play(rule.NotifySound);
         }
         ImGui.SameLine();
         ImGui.TextDisabled("Notify if this rule matches but is not applied");
@@ -122,10 +137,16 @@ public partial class MainWindow
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "DURING SCHEDULE");
+        ImGui.SameLine();
+        TestButton("sched", rule, RuleTestStage.FromSchedule,
+            "Starts at schedule. Skips the character filter. Then runs conditions and Then Set. Reverts after 5 seconds.");
         DrawSchedule(cfg, rule);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "IF THESE CONDITIONS");
+        ImGui.SameLine();
+        TestButton("cond", rule, RuleTestStage.FromConditions,
+            "Only checks conditions, then Then Set. Reverts after 5 seconds.");
         DrawChips(cfg, rule);
 
         if (rule.HasLegacy)
@@ -146,10 +167,16 @@ public partial class MainWindow
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "THEN SET / RUN / UPDATE");
+        ImGui.SameLine();
+        TestButton("then", rule, RuleTestStage.ThenOnly,
+            "Runs Then Set only. After 5 seconds continues to WHEN RULE STOPS MATCHING.");
         DrawThen(cfg, rule, false);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "WHEN THIS RULE STOPS MATCHING");
+        ImGui.SameLine();
+        TestButton("stop", rule, RuleTestStage.RevertNow,
+            "Runs the revert / keep path immediately. No wait.");
         var revert = rule.RevertWhenFalse;
         if (ImGui.RadioButton("Revert to the values below", revert))
         {
@@ -166,28 +193,43 @@ public partial class MainWindow
             DrawThen(cfg, rule, true);
         else
             ImGui.TextDisabled("Status, command, and comment stay until another rule changes them.");
+    }
 
-        var io = ImGui.GetIO();
-        var canDelete = io.KeyShift || io.KeyCtrl;
-        if (!canDelete) ImGui.BeginDisabled();
-        if (ImGui.Button("Delete rule")) remove = rule;
-        if (!canDelete) ImGui.EndDisabled();
-        if (!canDelete)
-        {
-            ImGui.SameLine();
-            ImGui.TextDisabled("hold Shift");
-        }
+    private bool TestButton(string id, StatusRule rule, RuleTestStage stage, string hover)
+    {
+        ImGui.PushID("test" + id);
+        if (ImGui.SmallButton("Test"))
+            testMsg = plugin.TestRule(rule, stage);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(hover);
+        ImGui.PopID();
+        return false;
     }
 
     private void DrawThen(Configuration cfg, StatusRule rule, bool fallback)
     {
+        cfg.MigrateCommentTemplates();
+        var lockStatus = !fallback && rule.UsesStatusCondition;
+        if (lockStatus && rule.OnlineStatus != OnlineStatusAction.LeaveAlone)
+        {
+            rule.OnlineStatus = OnlineStatusAction.LeaveAlone;
+            cfg.Save();
+        }
+
         var status = (int)(fallback ? rule.FallbackStatus : rule.OnlineStatus);
         ImGui.SetNextItemWidth(180);
+        if (lockStatus) ImGui.BeginDisabled();
         if (ImGui.Combo(fallback ? "##fbst" : "Status", ref status, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
         {
             if (fallback) rule.FallbackStatus = (OnlineStatusAction)status;
             else rule.OnlineStatus = (OnlineStatusAction)status;
             cfg.Save();
+        }
+        if (lockStatus)
+        {
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip("Status is a condition on this rule, so Then Set status stays Leave alone.");
         }
         ImGui.SameLine();
         var cmd = fallback ? rule.FallbackCommand ?? string.Empty : rule.Command ?? string.Empty;
@@ -198,6 +240,8 @@ public partial class MainWindow
             else rule.Command = cmd;
             cfg.Save();
         }
+        if (!fallback)
+            ImGui.TextDisabled("{teller} {targeter} {target} {zone} {job} {world} {home} {dc} {ward} {plot} {time}");
 
         if (!fallback && !string.IsNullOrWhiteSpace(rule.Command))
         {
@@ -237,15 +281,89 @@ public partial class MainWindow
             cfg.Save();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("WARNING: This will change your Character/Adventure Plate Search Info Comment to the plain text you enter here.");
+            ImGui.SetTooltip("WARNING: This will change your Character/Adventure Plate Search Info Comment to the text you enter here (60 characters).");
         if (change)
+            DrawCommentPicker(cfg, rule, fallback);
+    }
+
+    private void DrawCommentPicker(Configuration cfg, StatusRule rule, bool fallback)
+    {
+        var tmplId = fallback ? rule.FallbackCommentTemplate : rule.CommentTemplate;
+        var useTmpl = !string.IsNullOrWhiteSpace(tmplId);
+        if (ImGui.RadioButton(fallback ? "Type comment##fbc" : "Type comment", !useTmpl))
+        {
+            if (fallback) rule.FallbackCommentTemplate = string.Empty;
+            else rule.CommentTemplate = string.Empty;
+            cfg.Save();
+            useTmpl = false;
+        }
+        ImGui.SameLine();
+        if (ImGui.RadioButton(fallback ? "Use template##fbt" : "Use template", useTmpl))
+        {
+            if (cfg.NamedTemplates.Count > 0 && string.IsNullOrWhiteSpace(tmplId))
+            {
+                if (fallback) rule.FallbackCommentTemplate = cfg.NamedTemplates[0].Id;
+                else rule.CommentTemplate = cfg.NamedTemplates[0].Id;
+                cfg.Save();
+                tmplId = fallback ? rule.FallbackCommentTemplate : rule.CommentTemplate;
+            }
+            useTmpl = true;
+        }
+
+        if (useTmpl)
+        {
+            var titles = cfg.NamedTemplates.Select(t => t.Title).ToArray();
+            var idx = cfg.NamedTemplates.FindIndex(t => t.Id == tmplId);
+            if (idx < 0) idx = 0;
+            if (titles.Length == 0)
+            {
+                ImGui.TextDisabled("No templates yet. Type a comment and Save as template.");
+            }
+            else
+            {
+                ImGui.SetNextItemWidth(220);
+                if (ImGui.Combo(fallback ? "##fbtmpl" : "##tmpl", ref idx, titles, titles.Length))
+                {
+                    var id = cfg.NamedTemplates[idx].Id;
+                    if (fallback) rule.FallbackCommentTemplate = id;
+                    else rule.CommentTemplate = id;
+                    cfg.Save();
+                }
+                var body = idx >= 0 && idx < cfg.NamedTemplates.Count ? cfg.NamedTemplates[idx].Body : string.Empty;
+                ImGui.TextDisabled($"{body.Length}/{SearchComments.MaxLength}  {body}");
+            }
+        }
+        else
         {
             var comment = fallback ? rule.FallbackComment ?? string.Empty : rule.SearchComment;
-            ImGui.SetNextItemWidth(-1);
-            if (ImGui.InputTextWithHint(fallback ? "##fbcmt" : "##cmt", fallback ? "Comment after rule ends" : "Comment while this rule matches", ref comment, 192))
+            comment = SearchComments.Clamp(comment);
+            ImGui.InputTextMultiline(fallback ? "##fbcmt" : "##cmt", ref comment, SearchComments.MaxLength + 1, new Vector2(-1, 54));
+            comment = SearchComments.Clamp(comment);
+            if (fallback)
             {
-                if (fallback) rule.FallbackComment = comment;
-                else rule.SearchComment = comment;
+                if (comment != (rule.FallbackComment ?? string.Empty))
+                {
+                    rule.FallbackComment = comment;
+                    cfg.Save();
+                }
+            }
+            else if (comment != rule.SearchComment)
+            {
+                rule.SearchComment = comment;
+                cfg.Save();
+            }
+            ImGui.TextDisabled($"{comment.Length}/{SearchComments.MaxLength}");
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(140);
+            ImGui.InputTextWithHint(fallback ? "##fbtitle" : "##svtitle", "Template title", ref templateTitleBuf, 32);
+            ImGui.SameLine();
+            if (ImGui.SmallButton(fallback ? "Save as template##fbs" : "Save as template"))
+            {
+                var title = string.IsNullOrWhiteSpace(templateTitleBuf) ? rule.Name : templateTitleBuf.Trim();
+                var created = plugin.AddCommentTemplate(title, comment);
+                if (fallback) rule.FallbackCommentTemplate = created.Id;
+                else rule.CommentTemplate = created.Id;
+                templateTitleBuf = string.Empty;
                 cfg.Save();
             }
         }
