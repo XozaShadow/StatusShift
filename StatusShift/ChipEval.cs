@@ -46,17 +46,14 @@ internal static class ChipEval
                               || snap.WorldName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Zone => snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Region => snap.RegionName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.ZoneType => snap.ZoneTypeName.Contains(v, StringComparison.OrdinalIgnoreCase)
-                                 || snap.ZoneGroupName.Contains(v, StringComparison.OrdinalIgnoreCase),
+            ChipKind.ZoneType => ZoneGroups.Matches(v, snap),
             ChipKind.Residence => snap.InResidence && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Apartment => snap.Housing.Kind == ResidenceKind.Apartment
                                   && snap.Housing.Summary.Contains(v, StringComparison.OrdinalIgnoreCase),
             ChipKind.Duty => snap.Activities.Contains(ActivityFlag.InDuty)
                              && (v.Equals("any", StringComparison.OrdinalIgnoreCase)
                                  || snap.TerritoryName.Contains(v, StringComparison.OrdinalIgnoreCase)),
-            ChipKind.Job => JobRoles.Matches(v, snap.JobAbbr)
-                            || snap.JobAbbr.Equals(v, StringComparison.OrdinalIgnoreCase)
-                            || snap.JobAbbr.Contains(v, StringComparison.OrdinalIgnoreCase),
+            ChipKind.Job => JobHit(v, snap.JobAbbr),
             ChipKind.NearbyPlayer => look.NearbyPlayers.Exists(n =>
                 n.Equals(v, StringComparison.OrdinalIgnoreCase)
                 || n.StartsWith(v + "@", StringComparison.OrdinalIgnoreCase)
@@ -76,10 +73,25 @@ internal static class ChipEval
             ChipKind.TellFrom => ChatWatch.TellFrom(v),
             ChipKind.Chat => ChatWatch.ChatMatches(v),
             ChipKind.Accessory => look.AccessoryName.Contains(v, StringComparison.OrdinalIgnoreCase),
-            ChipKind.Status => look.Statuses.Exists(s => s.Contains(v, StringComparison.OrdinalIgnoreCase)),
+            ChipKind.Status => snap.OnlineStatusName.Contains(v, StringComparison.OrdinalIgnoreCase)
+                               || (v.Equals("Role-playing", StringComparison.OrdinalIgnoreCase)
+                                   && snap.Activities.Contains(ActivityFlag.Roleplaying)),
             ChipKind.Role => JobRoles.Matches(v, snap.JobAbbr),
             _ => true,
         };
+    }
+
+    private static bool JobHit(string value, string abbr)
+    {
+        var key = value;
+        var open = value.LastIndexOf('(');
+        if (open >= 0 && value.EndsWith(')'))
+            key = value[(open + 1)..^1].Trim();
+        return JobRoles.Matches(key, abbr)
+               || JobRoles.Matches(value, abbr)
+               || abbr.Equals(key, StringComparison.OrdinalIgnoreCase)
+               || abbr.Contains(key, StringComparison.OrdinalIgnoreCase)
+               || value.Contains(abbr, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool PropertyMatch(string v, GameSnapshot snap)
