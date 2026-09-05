@@ -6,22 +6,17 @@
     "Description": "Rules change your search comment, online status, and optional commands from zone, duty, activity, job, world, and schedule.",
     "InternalName": "StatusShift",
     "AssemblyVersion": "0.1.6.2",
+    "TestingAssemblyVersion": "0.1.7.0",
     "RepoUrl": "https://github.com/XozaShadow/StatusShift",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
+    "TestingDalamudApiLevel": 15,
     "IsHide": false,
-    "IsTestingExclusive": true,
+    "IsTestingExclusive": false,
     "IconUrl": "https://raw.githubusercontent.com/XozaShadow/StatusShift/main/images/icon.png",
     "DownloadLinkInstall": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.6.2/StatusShift.zip",
     "DownloadLinkUpdate": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.6.2/StatusShift.zip",
     "DownloadLinkTesting": "https://github.com/XozaShadow/StatusShift/releases/download/v0.1.7.0-test/StatusShift.zip",
-    "Tags": [
-      "status",
-      "search",
-      "comment",
-      "roleplay",
-      "schedule",
-      "zone"
-    ]
+    "Tags": ["status", "search", "comment", "roleplay", "schedule", "zone"]
   }
 ]
