@@ -24,6 +24,7 @@ public sealed record GameSnapshot(
 {
     public bool InResidence => Housing.Kind != ResidenceKind.None;
     public string DataCenterName { get; init; } = string.Empty;
+    public string OnlineStatusName { get; init; } = string.Empty;
     public string ZoneTypeName => string.IsNullOrEmpty(ZoneGroupName) ? TerritoryName : ZoneGroupName;
 
     public string Fingerprint =>
@@ -100,10 +101,17 @@ public sealed record GameSnapshot(
         var world = ps.IsLoaded ? ps.CurrentWorld : default;
         var home = ps.IsLoaded ? ps.HomeWorld : default;
         var dc = string.Empty;
+        var online = string.Empty;
         try
         {
             if (world.IsValid)
                 dc = world.Value.DataCenter.Value.Name.ToString();
+        }
+        catch { /* ignore */ }
+        try
+        {
+            if (player is ICharacter ch)
+                online = ch.OnlineStatus.Value.Name.ToString();
         }
         catch { /* ignore */ }
 
@@ -122,6 +130,7 @@ public sealed record GameSnapshot(
             flags)
         {
             DataCenterName = dc,
+            OnlineStatusName = online,
         };
     }
 
