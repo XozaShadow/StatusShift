@@ -60,12 +60,11 @@ public class ConfigWindow : Window, IDisposable
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Amber, "TIMERS / HANDLING");
-        ToggleRow(cfg, "Show Auto handling", () => cfg.ShowAutoApply, v => cfg.ShowAutoApply = v);
-        var labels = ApplyModeNames.ComboLabels(cfg.ShowAutoApply, cfg.ApplyMode);
-        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, cfg.ShowAutoApply);
+        var labels = ApplyModeNames.ComboLabels(true, cfg.ApplyMode);
+        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, true);
         if (ImGui.Combo("Handling Mode", ref mode, labels, labels.Length))
         {
-            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, cfg.ShowAutoApply, cfg.ApplyMode);
+            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, true, cfg.ApplyMode);
             cfg.Save();
             plugin.RequestEval();
         }
@@ -178,6 +177,16 @@ public class ConfigWindow : Window, IDisposable
                 lastMsg = plugin.TryImportRulesJson(importBuf, out var err2) ? "Replaced all rules." : err2;
             else lastMsg = "Box is empty or not Status Shift JSON.";
         }
+        ImGui.SameLine();
+        if (ImGui.Button("Archive Current & Wipe"))
+        {
+            var path = RuleStore.ArchiveAndWipe(cfg);
+            lastMsg = "Archived and wiped. Copy is at:\n" + path;
+            plugin.RequestEval();
+        }
+        ImGui.TextDisabled("Saves live here:");
+        ImGui.TextWrapped(RuleStore.FilePath);
+        ImGui.TextDisabled("Archive Current & Wipe copies rules.json then starts a blank list.");
         if (!string.IsNullOrEmpty(lastMsg))
             ImGui.TextWrapped(lastMsg);
     }
