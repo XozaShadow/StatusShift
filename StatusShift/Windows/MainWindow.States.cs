@@ -92,7 +92,6 @@ public partial class MainWindow
 
         if (sched.Mode is ScheduleMode.Weekly or ScheduleMode.Custom)
         {
-            ImGui.TextUnformatted("Days");
             for (var d = 0; d < Week.Length; d++)
             {
                 if (d > 0) ImGui.SameLine();
@@ -108,6 +107,7 @@ public partial class MainWindow
 
         if (sched.Mode == ScheduleMode.Always) return;
         var allDay = sched.AllDay;
+        if (sched.Mode is ScheduleMode.Weekly or ScheduleMode.Custom) ImGui.SameLine();
         if (ImGui.Checkbox("All Day", ref allDay)) { sched.AllDay = allDay; cfg.Save(); }
         if (sched.AllDay) return;
 
