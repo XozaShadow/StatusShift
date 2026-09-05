@@ -15,14 +15,14 @@ internal static class RuleStore
         PropertyNameCaseInsensitive = true,
     };
 
-    private static string FilePath =>
-        Path.Combine(Plugin.PluginInterface.GetPluginConfigDirectory(), FileName);
+    public static string ConfigDirectory => Plugin.PluginInterface.GetPluginConfigDirectory();
+    public static string FilePath => Path.Combine(ConfigDirectory, FileName);
 
     public static void Load(Configuration cfg)
     {
         try
         {
-            Directory.CreateDirectory(Plugin.PluginInterface.GetPluginConfigDirectory());
+            Directory.CreateDirectory(ConfigDirectory);
             if (File.Exists(FilePath))
             {
                 var rules = JsonSerializer.Deserialize<List<StatusRule>>(File.ReadAllText(FilePath), JsonOpts);
@@ -46,12 +46,26 @@ internal static class RuleStore
     {
         try
         {
-            Directory.CreateDirectory(Plugin.PluginInterface.GetPluginConfigDirectory());
+            Directory.CreateDirectory(ConfigDirectory);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(cfg.Rules ?? [], JsonOpts));
         }
         catch (Exception ex)
         {
             Plugin.Log.Warning(ex, "Failed to save {Path}", FilePath);
         }
+    }
+
+    public static string ArchiveAndWipe(Configuration cfg)
+    {
+        Directory.CreateDirectory(ConfigDirectory);
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var archive = Path.Combine(ConfigDirectory, $"rules-archive-{stamp}.json");
+        if (File.Exists(FilePath))
+            File.Copy(FilePath, archive, overwrite: true);
+        else
+            File.WriteAllText(archive, JsonSerializer.Serialize(cfg.Rules ?? [], JsonOpts));
+        cfg.Rules = [];
+        Save(cfg);
+        return archive;
     }
 }

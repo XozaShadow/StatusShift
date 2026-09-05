@@ -4,7 +4,7 @@ namespace StatusShift;
 
 internal static class ApplyModeNames
 {
-    public static readonly string[] Labels = ["Notifications", "Auto", "Off", "Selector"];
+    public static readonly string[] Labels = ["Off", "Notifications", "Selector", "Auto"];
 
     public static string Label(ApplyMode mode) => mode switch
     {
@@ -14,32 +14,21 @@ internal static class ApplyModeNames
         _ => "Notifications",
     };
 
-    public static string[] ComboLabels(bool showAuto, ApplyMode current)
-    {
-        var modes = Modes(showAuto, current);
-        var labels = new string[modes.Count];
-        for (var i = 0; i < modes.Count; i++) labels[i] = Label(modes[i]);
-        return labels;
-    }
+    public static string[] ComboLabels(bool showAuto, ApplyMode current) => Labels;
 
-    public static ApplyMode FromCombo(int index, bool showAuto, ApplyMode current)
+    public static ApplyMode FromCombo(int index, bool showAuto, ApplyMode current) => index switch
     {
-        var modes = Modes(showAuto, current);
-        if (index < 0 || index >= modes.Count) return ApplyMode.Selector;
-        return modes[index];
-    }
+        0 => ApplyMode.Off,
+        1 => ApplyMode.Confirm,
+        3 => ApplyMode.Auto,
+        _ => ApplyMode.Selector,
+    };
 
-    public static int ToCombo(ApplyMode mode, bool showAuto)
+    public static int ToCombo(ApplyMode mode, bool showAuto) => mode switch
     {
-        var modes = Modes(showAuto, mode);
-        var i = modes.IndexOf(mode);
-        return i < 0 ? 2 : i;
-    }
-
-    private static List<ApplyMode> Modes(bool showAuto, ApplyMode current)
-    {
-        var modes = new List<ApplyMode> { ApplyMode.Off, ApplyMode.Confirm, ApplyMode.Selector };
-        if (showAuto || current == ApplyMode.Auto) modes.Add(ApplyMode.Auto);
-        return modes;
-    }
+        ApplyMode.Off => 0,
+        ApplyMode.Confirm => 1,
+        ApplyMode.Auto => 3,
+        _ => 2,
+    };
 }
