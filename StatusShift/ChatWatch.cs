@@ -96,7 +96,12 @@ internal static class ChatWatch
 
     public static readonly string[] Channels =
     [
-        "Alliance", "Echo", "Free Company", "Linkshell 1", "Novice Network", "Party", "PvP Team",
-        "Say", "Shout", "Tell", "Tell Out", "Yell",
+        "Alliance",
+        "Cross World Linkshell 1", "Cross World Linkshell 2", "Cross World Linkshell 3", "Cross World Linkshell 4",
+        "Cross World Linkshell 5", "Cross World Linkshell 6", "Cross World Linkshell 7", "Cross World Linkshell 8",
+        "Echo", "Free Company",
+        "Linkshell 1", "Linkshell 2", "Linkshell 3", "Linkshell 4",
+        "Linkshell 5", "Linkshell 6", "Linkshell 7", "Linkshell 8",
+        "Novice Network", "Party", "PvP Team", "Say", "Shout", "Tell", "Tell Out", "Yell",
     ];
 }
