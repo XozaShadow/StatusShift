@@ -24,10 +24,10 @@ public partial class MainWindow : Window, IDisposable
 
     private static readonly DayOfWeek[] Week =
     [
-        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
-        DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+        DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday,
+        DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday,
     ];
-    private static readonly string[] DayLetters = ["M", "T", "W", "T", "F", "S", "S"];
+    private static readonly string[] DayLetters = ["S", "M", "T", "W", "T", "F", "S"];
     private static readonly string[] LocationKinds = ["Any place", "Territory ID", "Zone name", "Region", "Zone group", "Residence"];
     private static readonly string[] MatchOps = ["-", "Yes", "No"];
     private static readonly ActivityFlag[] StateChoices =
@@ -195,7 +195,11 @@ public partial class MainWindow : Window, IDisposable
         ImGui.BeginChild("folders", new Vector2(150, 0), true);
         if (ImGui.Selectable("All", selectedFolder == "All")) selectedFolder = "All";
         if (ImGui.Selectable("Ungrouped", selectedFolder == "Ungrouped")) selectedFolder = "Ungrouped";
-        if (folders.Count > 0) ImGui.Separator();
+        if (folders.Count > 0)
+        {
+            ImGui.Separator();
+            ImGui.TextDisabled("Categories");
+        }
         foreach (var folder in folders)
         {
             if (ImGui.Selectable(folder, selectedFolder.Equals(folder, StringComparison.OrdinalIgnoreCase)))
