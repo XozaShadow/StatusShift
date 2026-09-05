@@ -20,7 +20,6 @@ public partial class MainWindow
     private static List<string>? worldOptions;
     private static List<string>? jobOptions;
     private static List<string>? zoneOptions;
-    private static List<string>? zoneTypeOptions;
     private static List<string>? dcOptions;
 
     private static readonly (string Label, ChipKind Kind)[] ChipKindChoices =
@@ -42,7 +41,7 @@ public partial class MainWindow
         ("Tell from", ChipKind.TellFrom),
         ("World", ChipKind.World),
         ("Zone", ChipKind.Zone),
-        ("Zone type", ChipKind.ZoneType),
+        ("Zone group", ChipKind.ZoneType),
     ];
 
     private static readonly string[] ChipKindLabels = ChipKindChoices.Select(c => c.Label).ToArray();
@@ -90,10 +89,13 @@ public partial class MainWindow
         DrawChipGroup("AND:", cfg, rule.AndChips);
         DrawChipGroup("OR:", cfg, rule.OrChips);
         DrawChipGroup("NOT:", cfg, rule.NotChips);
+        ImGui.Separator();
         var why = plugin.ExplainRuleLine(rule);
-        if (!string.IsNullOrWhiteSpace(why)
-            && !why.Equals("Off.", StringComparison.OrdinalIgnoreCase))
-            ImGui.TextDisabled(why);
+        if (string.IsNullOrWhiteSpace(why) || why.Equals("Off.", StringComparison.OrdinalIgnoreCase))
+            ImGui.TextColored(UiTheme.Teal, "This rule is waiting on conditions / schedule.");
+        else
+            ImGui.TextColored(UiTheme.Amber, why);
+        ImGui.Separator();
         if (!string.IsNullOrEmpty(shareMsg))
             ImGui.TextDisabled(shareMsg);
     }
@@ -199,7 +201,7 @@ public partial class MainWindow
     }
 
     private static bool NeedsThreeLetters(ChipKind kind, int count) =>
-        kind is ChipKind.Zone or ChipKind.Status or ChipKind.Emote or ChipKind.Mount || count > 80;
+        kind is ChipKind.Zone or ChipKind.Emote or ChipKind.Mount || count > 80;
 
     private List<string> OptionsFor(ChipKind kind)
     {
@@ -230,7 +232,7 @@ public partial class MainWindow
                 list.AddRange(ZoneOptions());
                 break;
             case ChipKind.ZoneType:
-                list.AddRange(ZoneTypeOptions());
+                list.AddRange(ZoneGroups.Names);
                 break;
             case ChipKind.NearbyPlayer:
                 list.AddRange(LiveLook.Capture(plugin.Configuration.NearbyRange).NearbyPlayers);
@@ -242,7 +244,7 @@ public partial class MainWindow
                 list.Add("any");
                 break;
             case ChipKind.Status:
-                list.AddRange(LiveLook.Capture(plugin.Configuration.NearbyRange).Statuses);
+                list.AddRange(ChatSender.StatusLabels.Skip(1));
                 break;
         }
         return list;
@@ -250,15 +252,16 @@ public partial class MainWindow
 
     private static List<string> WorldOptions()
     {
-        if (worldOptions is not null) return worldOptions;
+        if (worldOptions is { Count: > 0 }) return worldOptions;
         worldOptions = [];
         var sheet = Plugin.DataManager.GetExcelSheet<World>();
         if (sheet is null) return worldOptions;
         foreach (var row in sheet)
         {
-            if (row.RowId == 0) continue;
+            if (row.RowId < 2) continue;
             var name = row.Name.ToString();
             if (string.IsNullOrWhiteSpace(name) || name.StartsWith("Dev", StringComparison.Ordinal)) continue;
+            if (name.Contains('_')) continue;
             worldOptions.Add(name);
         }
         worldOptions.Sort(StringComparer.OrdinalIgnoreCase);
@@ -267,7 +270,7 @@ public partial class MainWindow
 
     private static List<string> JobOptions()
     {
-        if (jobOptions is not null) return jobOptions;
+        if (jobOptions is { Count: > 0 }) return jobOptions;
         jobOptions = [];
         var sheet = Plugin.DataManager.GetExcelSheet<ClassJob>();
         if (sheet is null) return jobOptions;
@@ -275,8 +278,9 @@ public partial class MainWindow
         {
             if (row.RowId == 0) continue;
             var abbr = row.Abbreviation.ToString();
+            var name = row.Name.ToString();
             if (string.IsNullOrWhiteSpace(abbr) || abbr.Length > 4) continue;
-            jobOptions.Add(abbr);
+            jobOptions.Add(string.IsNullOrWhiteSpace(name) ? abbr : $"{name} ({abbr})");
         }
         jobOptions.Sort(StringComparer.OrdinalIgnoreCase);
         return jobOptions;
@@ -284,7 +288,7 @@ public partial class MainWindow
 
     private static List<string> ZoneOptions()
     {
-        if (zoneOptions is not null) return zoneOptions;
+        if (zoneOptions is { Count: > 0 }) return zoneOptions;
         zoneOptions = [];
         var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
         if (sheet is null) return zoneOptions;
@@ -299,26 +303,9 @@ public partial class MainWindow
         return zoneOptions;
     }
 
-    private static List<string> ZoneTypeOptions()
-    {
-        if (zoneTypeOptions is not null) return zoneTypeOptions;
-        zoneTypeOptions = [];
-        var sheet = Plugin.DataManager.GetExcelSheet<TerritoryType>();
-        if (sheet is null) return zoneTypeOptions;
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in sheet)
-        {
-            var name = row.PlaceNameZone.Value.Name.ToString();
-            if (string.IsNullOrWhiteSpace(name) || !seen.Add(name)) continue;
-            zoneTypeOptions.Add(name);
-        }
-        zoneTypeOptions.Sort(StringComparer.OrdinalIgnoreCase);
-        return zoneTypeOptions;
-    }
-
     private static List<string> DcOptions()
     {
-        if (dcOptions is not null) return dcOptions;
+        if (dcOptions is { Count: > 0 }) return dcOptions;
         dcOptions = [];
         try
         {
@@ -356,13 +343,8 @@ public partial class MainWindow
             var chip = chips[i];
             var label = chip.Label + "  x";
             var need = ImGui.CalcTextSize(label).X + 18;
-            if (i > 0 && used + need < wrap) ImGui.SameLine();
-            else
-            {
-                ImGui.Dummy(new System.Numerics.Vector2(18, 0));
-                ImGui.SameLine();
-                used = 18;
-            }
+            if (used + need < wrap) ImGui.SameLine();
+            else used = 0;
             used += need;
             ImGui.PushID(title + i + chip.Kind + chip.Value);
             if (ImGui.SmallButton(label))
@@ -401,7 +383,7 @@ public partial class MainWindow
             ChipKind.DataCenter => snap.DataCenterName,
             ChipKind.TellFrom => ChatWatch.LastTellFrom,
             ChipKind.Chat => ChatWatch.LastChatChannel,
-            ChipKind.Status => look.Statuses.Count > 0 ? look.Statuses[0] : string.Empty,
+            ChipKind.Status => snap.OnlineStatusName,
             _ => snap.TerritoryName,
         };
     }
@@ -440,8 +422,8 @@ public partial class MainWindow
         ChipKind.Regex => "regex pattern",
         ChipKind.DataCenter => "data center name",
         ChipKind.State => "or pick a state",
-        ChipKind.Status => "status effect name",
-        ChipKind.ZoneType => "or pick a zone type",
+        ChipKind.Status => "online status",
+        ChipKind.ZoneType => "Inn / House / City / Duty…",
         _ => "contains / custom",
     };
 }
