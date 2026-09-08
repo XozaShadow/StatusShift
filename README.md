@@ -4,6 +4,8 @@ StatusShift is a Dalamud plugin for Final Fantasy XIV. It changes your **online 
 
 Highest priority matching rule wins. Everything else stays put until a rule says otherwise.
 
+**1.0.0.0** is the first public release. Older `0.1.x` GitHub tags are kept as prereleases for history.
+
 ## What it is for
 
 Typical uses:

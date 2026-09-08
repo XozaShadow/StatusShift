@@ -85,14 +85,15 @@ jobs:
             artifacts/StatusShift.zip
           if-no-files-found: error
 
-      - name: Sync testing channel only
+      - name: Sync plugin repo (testing always; live only on full releases)
         if: github.event_name == 'release'
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}"
           $unix = [int64]"${{ steps.ver.outputs.unix }}"
           $tag = "${{ steps.ver.outputs.tag }}"
-          $testLink = "https://github.com/XozaShadow/StatusShift/releases/download/$tag/StatusShift.zip"
+          $isPre = "${{ github.event.release.prerelease }}" -eq "true"
+          $link = "https://github.com/XozaShadow/StatusShift/releases/download/$tag/StatusShift.zip"
           foreach ($path in @("pluginmaster.json", "repo.json")) {
             $raw = Get-Content $path -Raw | ConvertFrom-Json
             $entry = if ($raw -is [System.Array]) { $raw[0] } else { $raw }
@@ -101,7 +102,12 @@ jobs:
             } else {
               $entry.TestingAssemblyVersion = $v
             }
-            $entry.DownloadLinkTesting = $testLink
+            $entry.DownloadLinkTesting = $link
+            if (-not $isPre) {
+              $entry.AssemblyVersion = $v
+              $entry.DownloadLinkInstall = $link
+              $entry.DownloadLinkUpdate = $link
+            }
             if ($entry.PSObject.Properties.Name -contains "LastUpdate") {
               $entry.LastUpdate = $unix
             }
@@ -116,7 +122,8 @@ jobs:
           git add pluginmaster.json repo.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "testing: $v manifests [skip ci]"
+            $kind = if ($isPre) { "testing" } else { "release" }
+            git commit -m "${kind}: $v manifests [skip ci]"
             git push origin HEAD:main
           }
 
