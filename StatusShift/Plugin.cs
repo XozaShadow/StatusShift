@@ -88,6 +88,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
         ClientState.TerritoryChanged += OnTerritoryChanged;
         ClientState.Login += OnLogin;
+        ClientState.Logout += OnLogout;
         Framework.Update += OnFrameworkUpdate;
         ChatWatch.Attach();
 
@@ -102,6 +103,7 @@ public sealed partial class Plugin : IDalamudPlugin
         Framework.Update -= OnFrameworkUpdate;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         ClientState.Login -= OnLogin;
+        ClientState.Logout -= OnLogout;
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
@@ -119,8 +121,15 @@ public sealed partial class Plugin : IDalamudPlugin
     public GameSnapshot Snapshot() => engine.Snapshot();
     public string ExplainMatch() => engine.Explain();
     public bool IsPaused => paused;
+    public bool CharacterReady =>
+        ClientState.IsLoggedIn
+        && ObjectTable.LocalPlayer is not null
+        && PlayerState.IsLoaded;
+
     public string StatusLine()
     {
+        if (!CharacterReady)
+            return "Not logged in";
         if (paused)
         {
             if (pauseUntil is DateTime until)
@@ -212,6 +221,11 @@ public sealed partial class Plugin : IDalamudPlugin
 
     public bool TryApply(StatusRule? rule = null, bool force = false)
     {
+        if (!CharacterReady)
+        {
+            Notify("Not logged in.");
+            return false;
+        }
         rule ??= engine.FindMatch();
         if (rule is null)
         {
@@ -224,6 +238,8 @@ public sealed partial class Plugin : IDalamudPlugin
 
     public string TestRule(StatusRule rule, RuleTestStage stage)
     {
+        if (!CharacterReady)
+            return "Not logged in.";
         var ctx = engine.Snapshot();
         var playerName = ObjectTable.LocalPlayer?.Name.TextValue ?? string.Empty;
 
@@ -274,6 +290,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private bool ApplyValues(StatusRule rule, string comment, bool force)
     {
+        if (!CharacterReady) return false;
         var command = rule.Command?.Trim() ?? string.Empty;
         if (!force && comment == lastAppliedComment && rule.OnlineStatus == lastAppliedStatus && command == lastAppliedCommand && lastMatchedRuleId == rule.Id)
             return MaybeRerunCommand(rule, force);
@@ -440,11 +457,42 @@ public sealed partial class Plugin : IDalamudPlugin
         Notify("/ss config — settings");
     }
 
-    private void OnTerritoryChanged(uint _) { lastEval = DateTime.MinValue; Evaluate(fromEvent: true); }
+    private void OnTerritoryChanged(uint _)
+    {
+        if (!CharacterReady) return;
+        lastEval = DateTime.MinValue;
+        Evaluate(fromEvent: true);
+    }
+
     private void OnLogin() => lastEval = DateTime.MinValue;
+
+    private void OnLogout(int type, int code) => StopWhileLoggedOut();
+
+    private void StopWhileLoggedOut()
+    {
+        selectorWindow.Hide();
+        lastMatchedRuleId = null;
+        lastCommandRuleId = null;
+        lastSelectorKey = null;
+        pendingRuleId = null;
+        lastFingerprint = string.Empty;
+        testRevertAt = null;
+        testRevertRuleId = null;
+        lastAppliedComment = string.Empty;
+        lastAppliedStatus = OnlineStatusAction.LeaveAlone;
+        lastAppliedCommand = string.Empty;
+        lastApply = DateTime.MinValue;
+    }
 
     private void OnFrameworkUpdate(IFramework _)
     {
+        if (!CharacterReady)
+        {
+            if (lastMatchedRuleId is not null || lastSelectorKey is not null || selectorWindow.IsOpen)
+                StopWhileLoggedOut();
+            return;
+        }
+
         if (paused && pauseUntil is DateTime until && DateTime.Now >= until)
         {
             paused = false;
@@ -454,7 +502,7 @@ public sealed partial class Plugin : IDalamudPlugin
             return;
         }
 
-        if (!Configuration.Enabled || paused || !ClientState.IsLoggedIn) return;
+        if (!Configuration.Enabled || paused) return;
         if (testRevertAt is DateTime when && DateTime.Now >= when)
         {
             testRevertAt = null;
@@ -483,6 +531,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void Evaluate(bool forceNotice = false, bool fromEvent = false)
     {
+        if (!CharacterReady) return;
         lastEval = DateTime.Now;
         if (Configuration.ApplyMode == ApplyMode.Off) return;
 
@@ -596,6 +645,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     internal void ApplyFallback(StatusRule previous, bool ignoreCooldown)
     {
+        if (!CharacterReady) return;
         if (!previous.RevertWhenFalse)
         {
             Notify($"[{previous.Name}] keep — nothing reverted.");

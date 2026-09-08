@@ -27,6 +27,8 @@ internal static class ChatSender
     {
         if (string.IsNullOrWhiteSpace(command))
             return false;
+        if (!Plugin.ClientState.IsLoggedIn || Plugin.ObjectTable.LocalPlayer is null)
+            return false;
 
         if (!command.StartsWith('/'))
             command = "/" + command;
