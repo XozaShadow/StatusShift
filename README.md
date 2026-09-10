@@ -1,5 +1,7 @@
 # StatusShift
 
+Getting tired of getting knocked out of whatever search status you put yourself in? Whether it's through travel, logging, or anything else? Here's your solution!
+
 StatusShift is a Dalamud plugin for Final Fantasy XIV. Rules change your **online status**, optional **search comment**, and optional **slash commands** from where you are, what you are doing, which job you are on, who you are playing, and what the clock says.
 
 Highest priority matching rule wins. Everything else stays put until a rule says otherwise. Nothing runs on the title screen or character select.
