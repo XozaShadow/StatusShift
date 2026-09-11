@@ -28,6 +28,14 @@ public enum ApplyMode
     Selector = 3,
 }
 
+public enum ThenSend
+{
+    Auto = 0,
+    Status = 1,
+    Comment = 2,
+    Command = 3,
+}
+
 public enum ScheduleMode
 {
     Always = 0,
@@ -157,6 +165,8 @@ public partial class StatusRule
     public string Command { get; set; } = string.Empty;
     public bool RerunCommand { get; set; }
     public int CommandIntervalSeconds { get; set; }
+    public ThenSend ThenSend { get; set; }
+    public ThenSend FallbackThenSend { get; set; }
 
     public RuleSchedule Schedule { get; set; } = new();
     public List<StateFilter> States { get; set; } = [];
@@ -185,6 +195,24 @@ public partial class StatusRule
     public bool HasCommand => !string.IsNullOrWhiteSpace(Command);
     public bool HasCharacterFilter => !string.IsNullOrWhiteSpace(CharacterFilter);
     public string FolderKey => string.IsNullOrWhiteSpace(Folder) ? string.Empty : Folder.Trim();
+
+    public ThenSend EffectiveThen(bool fallback)
+    {
+        var stored = fallback ? FallbackThenSend : ThenSend;
+        if (stored is ThenSend.Status or ThenSend.Comment or ThenSend.Command)
+            return stored;
+        if (fallback)
+        {
+            if (FallbackStatus != OnlineStatusAction.LeaveAlone) return ThenSend.Status;
+            if (ChangeFallbackComment) return ThenSend.Comment;
+            if (!string.IsNullOrWhiteSpace(FallbackCommand)) return ThenSend.Command;
+            return ThenSend.Status;
+        }
+        if (OnlineStatus != OnlineStatusAction.LeaveAlone) return ThenSend.Status;
+        if (ChangeSearchComment) return ThenSend.Comment;
+        if (HasCommand) return ThenSend.Command;
+        return ThenSend.Status;
+    }
 
     public int EffectiveCommandInterval(int pollSeconds)
     {

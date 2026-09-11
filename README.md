@@ -6,7 +6,7 @@ StatusShift is a Dalamud plugin for Final Fantasy XIV. Rules change your **onlin
 
 Highest priority matching rule wins. Everything else stays put until a rule says otherwise. Nothing runs on the title screen or character select.
 
-**1.0.0.0** is the first public release. Older `0.1.x` GitHub tags are kept as prereleases for history.
+**1.0.0.1** follows Dalamud’s 1:1 rule: one player click, one slash command. Older `0.1.x` GitHub tags are prereleases.
 
 ## What it is for
 
@@ -40,8 +40,8 @@ Enable **Get plugin testing versions** in Dalamud only if you want test builds. 
 3. Optional: **Category**, **Character** (`First Last` or `First Last@World`), **Notes**.
 4. **During schedule** if it should only run at certain times. Leave Always if not.
 5. **If these conditions** — add AND / OR / NOT chips (world, zone, job, state, housing, and so on). Empty lists mean “any.”
-6. **Then set / run / update** — online status, optional command, optional 60-character search comment (typed or a template).
-7. **When this rule stops matching** — **Revert** to the values below, or **Keep** what this rule set.
+6. **Then** — pick **one** of: online status, search comment, or one slash command.
+7. **When this rule stops matching** — nothing is sent by itself. Apply another rule or Test the fallback if you want a follow-up command.
 8. Turn the rule **On**.
 
 The header shows the current match. Click it to edit. **Check Now** applies immediately (when Handling is not Off).
@@ -52,10 +52,11 @@ Set in Settings, on the Selector window, or with `/ss`.
 
 | Mode | What it does |
 | --- | --- |
-| Notifications | Tells you a rule matched (chat / toast / sound). Apply with `/ss apply` or `/ss update`. |
-| Selector | Popup of matching rules. Checkbox enables or disables. Click the **name** to apply. |
-| Auto | Applies the highest matching rule after the cooldown. |
+| Notifications | Tells you a rule matched (chat / toast / sound). `/ss apply` or **Check Now** sends **one** command. |
+| Selector | Popup of matching rules. Checkbox enables or disables. Click the **name** to send **one** command. |
 | Off | No checks, no popups, no notifications. |
+
+There is no Auto apply and no repeating commands (Dalamud 1:1: one player click → one slash command).
 
 ## Commands
 
@@ -66,7 +67,7 @@ Set in Settings, on the Selector window, or with `/ss`.
 | `/ss now` | Preview the match, do not apply |
 | `/ss pause [seconds]` | Pause rules (`120` = two minutes; omit seconds = until resume) |
 | `/ss resume` | Resume |
-| `/ss auto` `/ss notifications` `/ss selector` `/ss off` | Set handling mode |
+| `/ss auto` `/ss notifications` `/ss selector` `/ss off` | Set handling (`auto` maps to Selector) |
 | `/ss zone` | Print current world, zone, housing, job |
 | `/ss config` | Open Settings |
 | `/ss help` | Command list |
@@ -118,13 +119,15 @@ Searchable pickers for longer lists (type 3+ letters on very long lists).
 | Zone | Zone / territory name |
 | Zone group | Inn, house, apartment, residential area, duty, aquatic, city, and similar |
 
-### Then set / run / update
+### Then (one command)
 
-- Online status, or **Leave alone**.
-- Command / macro. Wait N seconds before first send. Optional **repeat every N seconds** (`0` = Settings check interval).
-- Search comment: 60 characters, same specials as the in-game search info. **Type comment** or **Use template**.
+Pick **Status**, **Comment**, or **Command**. A click (Check Now, selector name, `/ss apply`, Test) sends **exactly one** slash command.
 
-If **Status** is used as a condition, Then Set cannot also change status.
+- Status — `/busy on`, `/roleplaying on`, …
+- Comment — `/searchcomment …` (60 characters, type or template)
+- Command — one line. Slash is optional.
+
+No wait timer. No repeat. If Status is a **condition**, Then Status stays Leave alone — use Comment or Command instead.
 
 ### Comment templates
 
@@ -132,22 +135,19 @@ Titled 60-character snippets in Settings (chips: right-click edit, copy last app
 
 ### When the rule stops matching
 
-- **Revert** to the fallback status / comment / command below, or
-- **Keep** what this rule set until another rule changes it.
-
-Default is revert.
+Nothing is sent by itself. Use another rule, or **Test** on this section to send **one** fallback command (Status, Comment, or Command).
 
 ### Test buttons
 
-Ignore timers. Hover each button for the exact path.
+Each Test is a click, so it may send **one** command. Hover for the path.
 
 | Where | What it does |
 | --- | --- |
-| Editor header | Character → schedule → conditions → Then. Reverts after 5 seconds |
+| Editor header | Character → schedule → conditions → one Then command |
 | During schedule | Starts at schedule |
-| If these conditions | Conditions onward |
-| Then set | Fires Then, waits 5 seconds, then the stop path |
-| When this rule stops matching | Runs revert / keep immediately |
+| If these conditions | Conditions, then one Then command |
+| Then | One Then command |
+| When this rule stops matching | One fallback command, immediately |
 
 ## Sharing
 

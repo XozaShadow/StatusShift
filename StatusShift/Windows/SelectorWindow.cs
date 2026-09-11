@@ -39,12 +39,14 @@ public sealed class SelectorWindow : Window
         ImGui.TextColored(UiTheme.Teal, "Matching now");
         ImGui.TextDisabled("Checkbox on/off. Click the name to apply.");
 
-        var labels = ApplyModeNames.ComboLabels(true, cfg.ApplyMode);
-        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, true);
+        var labels = ApplyModeNames.ComboLabels(false, cfg.ApplyMode);
+        var mode = ApplyModeNames.ToCombo(cfg.ApplyMode, false);
         ImGui.SetNextItemWidth(160);
         if (ImGui.Combo("Handling", ref mode, labels, labels.Length))
         {
-            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, true, cfg.ApplyMode);
+            cfg.ApplyMode = ApplyModeNames.FromCombo(mode, false, cfg.ApplyMode);
+            if (cfg.ApplyMode == ApplyMode.Auto)
+                cfg.ApplyMode = ApplyMode.Selector;
             cfg.Save();
             plugin.RequestEval();
         }

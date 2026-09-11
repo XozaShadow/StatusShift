@@ -24,7 +24,7 @@ public partial class MainWindow
         ImGui.TextDisabled("|");
         ImGui.SameLine();
         if (TestButton("hdr", rule, RuleTestStage.Full,
-                "Runs character, schedule, conditions, then set. After 5 seconds reverts as if the rule stopped matching. Ignores timers."))
+                "Runs character, schedule, conditions, then sends one command. Use Test on WHEN RULE STOPS for fallback."))
             return;
         ImGui.SameLine();
         if (ImGui.SmallButton("Duplicate"))
@@ -139,14 +139,14 @@ public partial class MainWindow
         ImGui.TextColored(UiTheme.Teal, "DURING SCHEDULE");
         ImGui.SameLine();
         TestButton("sched", rule, RuleTestStage.FromSchedule,
-            "Starts at schedule. Skips the character filter. Then runs conditions and Then Set. Reverts after 5 seconds.");
+            "Starts at schedule. Skips the character filter. Then checks conditions and sends one Then command.");
         DrawSchedule(cfg, rule);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "IF THESE CONDITIONS");
         ImGui.SameLine();
         TestButton("cond", rule, RuleTestStage.FromConditions,
-            "Only checks conditions, then Then Set. Reverts after 5 seconds.");
+            "Only checks conditions, then sends one Then command.");
         DrawChips(cfg, rule);
 
         if (rule.HasLegacy)
@@ -169,16 +169,16 @@ public partial class MainWindow
         ImGui.TextColored(UiTheme.Teal, "THEN SET / RUN / UPDATE");
         ImGui.SameLine();
         TestButton("then", rule, RuleTestStage.ThenOnly,
-            "Runs Then Set only. After 5 seconds continues to WHEN RULE STOPS MATCHING.");
+            "Sends one Then command (status, comment, or slash). No extra commands.");
         DrawThen(cfg, rule, false);
 
         ImGui.Separator();
         ImGui.TextColored(UiTheme.Teal, "WHEN THIS RULE STOPS MATCHING");
         ImGui.SameLine();
         TestButton("stop", rule, RuleTestStage.RevertNow,
-            "Runs the revert / keep path immediately. No wait.");
+            "Sends one fallback command. Only runs when you click Test.");
         var revert = rule.RevertWhenFalse;
-        if (ImGui.RadioButton("Revert to the values below", revert))
+        if (ImGui.RadioButton("Fallback below (only if you apply / Test it)", revert))
         {
             rule.RevertWhenFalse = true;
             cfg.Save();
@@ -192,7 +192,7 @@ public partial class MainWindow
         if (rule.RevertWhenFalse)
             DrawThen(cfg, rule, true);
         else
-            ImGui.TextDisabled("Status, command, and comment stay until another rule changes them.");
+            ImGui.TextDisabled("Nothing is sent automatically when the rule stops matching.");
     }
 
     private bool TestButton(string id, StatusRule rule, RuleTestStage stage, string hover)
@@ -216,74 +216,72 @@ public partial class MainWindow
             cfg.Save();
         }
 
-        var status = (int)(fallback ? rule.FallbackStatus : rule.OnlineStatus);
-        ImGui.SetNextItemWidth(180);
-        if (lockStatus) ImGui.BeginDisabled();
-        if (ImGui.Combo(fallback ? "##fbst" : "Status", ref status, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
+        var send = fallback ? rule.FallbackThenSend : rule.ThenSend;
+        if (send == ThenSend.Auto)
+            send = rule.EffectiveThen(fallback);
+
+        ImGui.TextDisabled("One slash command per click.");
+        if (ImGui.RadioButton(fallback ? "Status##fbsend" : "Status##send", send == ThenSend.Status))
         {
-            if (fallback) rule.FallbackStatus = (OnlineStatusAction)status;
-            else rule.OnlineStatus = (OnlineStatusAction)status;
+            if (fallback) rule.FallbackThenSend = ThenSend.Status;
+            else rule.ThenSend = ThenSend.Status;
             cfg.Save();
-        }
-        if (lockStatus)
-        {
-            ImGui.EndDisabled();
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip("Status is a condition on this rule, so Then Set status stays Leave alone.");
+            send = ThenSend.Status;
         }
         ImGui.SameLine();
-        var cmd = fallback ? rule.FallbackCommand ?? string.Empty : rule.Command ?? string.Empty;
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint(fallback ? "##fbcmd" : "##cmd", "Command / macro", ref cmd, 192))
+        if (ImGui.RadioButton(fallback ? "Comment##fbsend" : "Comment##send", send == ThenSend.Comment))
         {
-            if (fallback) rule.FallbackCommand = cmd;
-            else rule.Command = cmd;
+            if (fallback) rule.FallbackThenSend = ThenSend.Comment;
+            else rule.ThenSend = ThenSend.Comment;
             cfg.Save();
+            send = ThenSend.Comment;
         }
-        if (!fallback)
-            ImGui.TextDisabled("{teller} {targeter} {target} {zone} {job} {world} {home} {dc} {ward} {plot} {time}");
-
-        if (!fallback && !string.IsNullOrWhiteSpace(rule.Command))
+        ImGui.SameLine();
+        if (ImGui.RadioButton(fallback ? "Command##fbsend" : "Command##send", send == ThenSend.Command))
         {
-            var delay = rule.CommandDelaySeconds;
-            ImGui.SetNextItemWidth(60);
-            if (ImGui.InputInt("Wait before command (s)", ref delay))
-            {
-                rule.CommandDelaySeconds = Math.Max(0, delay);
-                cfg.Save();
-            }
-            var rerun = rule.RerunCommand;
-            if (ImGui.Checkbox("Repeat this /command every", ref rerun))
-            {
-                rule.RerunCommand = rerun;
-                cfg.Save();
-            }
-            if (rule.RerunCommand)
-            {
-                ImGui.SameLine();
-                var every = rule.CommandIntervalSeconds;
-                ImGui.SetNextItemWidth(60);
-                if (ImGui.InputInt("##int", ref every))
-                {
-                    rule.CommandIntervalSeconds = Math.Max(0, every);
-                    cfg.Save();
-                }
-                ImGui.SameLine();
-                ImGui.TextUnformatted("s   (0 = check interval)");
-            }
+            if (fallback) rule.FallbackThenSend = ThenSend.Command;
+            else rule.ThenSend = ThenSend.Command;
+            cfg.Save();
+            send = ThenSend.Command;
         }
 
-        var change = fallback ? rule.ChangeFallbackComment : rule.ChangeSearchComment;
-        if (ImGui.Checkbox(fallback ? "Change Search Comment on revert?" : "Change Search Comment?", ref change))
+        if (send == ThenSend.Status)
         {
-            if (fallback) rule.ChangeFallbackComment = change;
-            else rule.ChangeSearchComment = change;
-            cfg.Save();
+            var status = (int)(fallback ? rule.FallbackStatus : rule.OnlineStatus);
+            ImGui.SetNextItemWidth(180);
+            if (lockStatus) ImGui.BeginDisabled();
+            if (ImGui.Combo(fallback ? "##fbst" : "Status", ref status, ChatSender.StatusLabels, ChatSender.StatusLabels.Length))
+            {
+                if (fallback) rule.FallbackStatus = (OnlineStatusAction)status;
+                else rule.OnlineStatus = (OnlineStatusAction)status;
+                cfg.Save();
+            }
+            if (lockStatus)
+            {
+                ImGui.EndDisabled();
+                if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    ImGui.SetTooltip("Status is a condition on this rule, so Then stays Leave alone. Use Comment or Command.");
+            }
         }
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("WARNING: This will change your Character/Adventure Plate Search Info Comment to the text you enter here (60 characters).");
-        if (change)
+        else if (send == ThenSend.Command)
+        {
+            var cmd = fallback ? rule.FallbackCommand ?? string.Empty : rule.Command ?? string.Empty;
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.InputTextWithHint(fallback ? "##fbcmd" : "##cmd", "Command / macro  (one line)", ref cmd, 192))
+            {
+                if (fallback) rule.FallbackCommand = cmd;
+                else rule.Command = cmd;
+                cfg.Save();
+            }
+            if (!fallback)
+                ImGui.TextDisabled("{teller} {targeter} {target} {zone} {job} {world} {home} {dc} {ward} {plot} {time}");
+        }
+        else
+        {
+            if (fallback) rule.ChangeFallbackComment = true;
+            else rule.ChangeSearchComment = true;
             DrawCommentPicker(cfg, rule, fallback);
+        }
     }
 
     private void DrawCommentPicker(Configuration cfg, StatusRule rule, bool fallback)

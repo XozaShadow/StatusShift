@@ -4,11 +4,10 @@ namespace StatusShift;
 
 internal static class ApplyModeNames
 {
-    public static readonly string[] Labels = ["Off", "Notifications", "Selector", "Auto"];
+    public static readonly string[] Labels = ["Off", "Notifications", "Selector"];
 
     public static string Label(ApplyMode mode) => mode switch
     {
-        ApplyMode.Auto => "Auto",
         ApplyMode.Off => "Off",
         ApplyMode.Selector => "Selector",
         _ => "Notifications",
@@ -20,7 +19,6 @@ internal static class ApplyModeNames
     {
         0 => ApplyMode.Off,
         1 => ApplyMode.Confirm,
-        3 => ApplyMode.Auto,
         _ => ApplyMode.Selector,
     };
 
@@ -28,7 +26,6 @@ internal static class ApplyModeNames
     {
         ApplyMode.Off => 0,
         ApplyMode.Confirm => 1,
-        ApplyMode.Auto => 3,
         _ => 2,
     };
 }
